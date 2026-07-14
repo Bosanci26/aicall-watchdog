@@ -38,7 +38,7 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
           HEALTH_KEY: ${{ secrets.HEALTH_KEY }}
-          TWILIO_LOW_USD: "100"      # TEMPORAR ridicat pt test - revin la 5
+          TWILIO_LOW_USD: "5"        # anunta cand soldul Twilio scade sub $5
           ELEVENLABS_LOW_PCT: "10"   # anunta cand raman sub 10% caractere voce
           SIMULATE: ${{ github.event.inputs.simulate }}
         run: python check.py
