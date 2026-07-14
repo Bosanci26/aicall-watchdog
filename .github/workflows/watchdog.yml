@@ -3,7 +3,13 @@ name: AiCall Watchdog
 on:
   schedule:
     - cron: '*/5 * * * *'   # la fiecare 5 minute
-  workflow_dispatch: {}       # buton de test manual (tab Actions)
+  workflow_dispatch:          # buton manual (tab Actions)
+    inputs:
+      simulate:
+        description: "Test alarma: trimite o alerta FALSA pe Telegram, fara sa atinga AiCall"
+        type: choice
+        options: ["no", "down", "degraded"]
+        default: "no"
 
 concurrency:
   group: aicall-watchdog
@@ -31,6 +37,7 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
+          SIMULATE: ${{ github.event.inputs.simulate }}
         run: python check.py
 
       - name: Salveaza starea

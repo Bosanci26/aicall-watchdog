@@ -92,6 +92,19 @@ def try_auto_repair():
 
 
 def main():
+    # Buton de test (workflow_dispatch cu simulate=down/degraded): trimite o
+    # alerta FALSA, clar marcata, fara sa atinga AiCall real, fara redeploy,
+    # fara sa modifice starea. Ca userul sa vada cu ochii lui ca alarma suna.
+    sim = os.environ.get("SIMULATE", "no").strip().lower()
+    if sim in ("down", "degraded"):
+        fake = ("🔴 backend NU raspunde" if sim == "down"
+                else "🟠 un serviciu (ex. OpenAI) ar fi cazut")
+        notify("🧪 <b>TEST caine de paza AiCall</b>\n\n"
+               "Asa arata o alerta reala cand ceva pica:\n\n" + fake +
+               "\n\n(Doar test — AiCall functioneaza normal, nu s-a repornit nimic.)")
+        print("alerta de TEST trimisa:", sim)
+        return
+
     prev = "OK"
     if os.path.exists(STATE_FILE):
         prev = (open(STATE_FILE).read().strip() or "OK")
