@@ -32,7 +32,7 @@ jobs:
 
       - name: Verifica AiCall
         env:
-          BACKEND_URL: https://aicall-backend-1dwi.onrender.com
+          BACKEND_URL: https://aicall-backend-1dwi-OFFLINE-TEST.onrender.com
           FRONTEND_URL: https://aicall-frontend.vercel.app
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
