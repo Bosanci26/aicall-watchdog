@@ -18,7 +18,12 @@ FRONTEND = os.environ.get("FRONTEND_URL", "").rstrip("/")
 TG_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 TG_CHAT = os.environ.get("TELEGRAM_CHAT_ID", "")
 DEPLOY_HOOK = os.environ.get("RENDER_DEPLOY_HOOK", "")
+HEALTH_KEY = os.environ.get("HEALTH_KEY", "")  # verificare sold furnizori
 STATE_FILE = "watchdog-state.txt"
+
+# Praguri "bani putini" - anunta INAINTE sa ramai fara
+TWILIO_LOW_USD = float(os.environ.get("TWILIO_LOW_USD", "5"))       # ~100 min RO
+ELEVENLABS_LOW_PCT = float(os.environ.get("ELEVENLABS_LOW_PCT", "10"))  # sub 10% ramas
 
 # Serviciile fara de care AiCall nu poate traduce un apel
 CRIT_DEPS = ["supabase", "openai", "elevenlabs", "twilio"]
@@ -79,6 +84,50 @@ def check_frontend():
         return False, str(e)
 
 
+def check_providers():
+    """Verifica soldul la furnizori. Returneaza lista de probleme (text)."""
+    if not HEALTH_KEY:
+        return []
+    try:
+        code, body = http_get(
+            BACKEND + "/api/health/providers?key=" + urllib.parse.quote(HEALTH_KEY),
+            timeout=30)
+        if code != 200:
+            return []  # nu blocam - reachability o prinde alt check
+        p = json.loads(body)
+    except Exception as e:
+        print("providers check a esuat:", e)
+        return []
+
+    problems = []
+    tw = p.get("twilio", {})
+    if tw.get("ok") and tw.get("balance_usd") is not None:
+        bal = tw["balance_usd"]
+        if bal < TWILIO_LOW_USD:
+            problems.append(f"💳 <b>Twilio: bani putini</b> — au ramas ${bal:.2f} (sub ${TWILIO_LOW_USD:.0f}). Reincarca.")
+    elif not tw.get("ok"):
+        problems.append(f"🔴 Twilio nu raspunde: {tw.get('error','?')}")
+
+    oa = p.get("openai", {})
+    if not oa.get("ok"):
+        problems.append(f"🔴 <b>OpenAI</b> (traducerea) nu merge: {oa.get('error','?')}")
+
+    el = p.get("elevenlabs", {})
+    if el.get("ok") and el.get("chars_limit"):
+        left, limit = el.get("chars_left", 0), el["chars_limit"]
+        pct = (left / limit * 100) if limit else 100
+        if pct < ELEVENLABS_LOW_PCT:
+            problems.append(f"💳 <b>ElevenLabs: cote pe terminate</b> — au ramas {left} caractere ({pct:.0f}%). Reincarca abonamentul.")
+    elif not el.get("ok"):
+        problems.append(f"🔴 ElevenLabs (vocea) nu raspunde: {el.get('error','?')}")
+
+    sb = p.get("supabase", {})
+    if not sb.get("ok"):
+        problems.append(f"🔴 Supabase (baza de date) nu raspunde: {sb.get('error','?')}")
+
+    return problems
+
+
 def try_auto_repair():
     if not DEPLOY_HOOK:
         return "\n\n(Fara auto-reparare: nu e configurat Render Deploy Hook.)"
@@ -119,6 +168,10 @@ def main():
         problems.append("🟠 " + b_msg)
     if not f_ok:
         problems.append("🔴 site-ul (frontend) nu raspunde: " + f_msg)
+
+    # Sold furnizori (doar daca backend-ul e sus - altfel nu are rost)
+    if b_status != "DOWN":
+        problems.extend(check_providers())
 
     if not problems:
         status = "OK"
