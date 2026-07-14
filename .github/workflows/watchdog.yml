@@ -1,0 +1,41 @@
+name: AiCall Watchdog
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'   # la fiecare 5 minute
+  workflow_dispatch: {}       # buton de test manual (tab Actions)
+
+concurrency:
+  group: aicall-watchdog
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restaureaza ultima stare
+        uses: actions/cache/restore@v4
+        with:
+          path: watchdog-state.txt
+          key: watchdog-state-${{ github.run_id }}
+          restore-keys: |
+            watchdog-state-
+
+      - name: Verifica AiCall
+        env:
+          BACKEND_URL: https://aicall-backend-1dwi.onrender.com
+          FRONTEND_URL: https://aicall-frontend.vercel.app
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
+        run: python check.py
+
+      - name: Salveaza starea
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: watchdog-state.txt
+          key: watchdog-state-${{ github.run_id }}
