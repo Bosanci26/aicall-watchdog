@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """
-Caine de paza AiCall: verifica backend + frontend, anunta pe Telegram cand
-ceva pica sau isi revine, si (optional) cere automat un redeploy pe Render.
+Asistent de paza AiCall: verifica backend + frontend + SOLDUL la furnizori +
+CODUL (agentul de vanzari si traducerea au toate functiile? rutele exista?
+Twilio raporteaza erori de telefonie?), anunta pe Telegram cand ceva pica sau
+isi revine, si (optional) cere automat un redeploy pe Render.
 
 Fara dependinte (doar stdlib). Ruleaza pe GitHub Actions din 5 in 5 minute.
 Notifica DOAR la SCHIMBAREA starii (anti-spam): OK->problema si problema->OK.
@@ -128,6 +130,34 @@ def check_providers():
     return problems
 
 
+def check_code():
+    """
+    Verificare de COD, nu doar de "raspunde serverul": chiar exista tot ce
+    trebuie ca sa poata suna? Pe 26 iulie, modulul agentului a pierdut jumatate
+    din functii si fisierul a ramas cod valid - serverul raspundea vesel, dar
+    orice apel ar fi crapat. Asta prinde exact asa ceva.
+    Verifica si erorile de telefonie raportate de Twilio.
+    """
+    if not (BACKEND and HEALTH_KEY):
+        return []
+    try:
+        code, body = http_get(f"{BACKEND}/api/health/code?key={HEALTH_KEY}", timeout=45)
+        if code != 200:
+            return [f"🟠 verificarea de cod raspunde {code}"]
+        d = json.loads(body)
+    except Exception as e:
+        return [f"🟠 nu pot verifica codul: {e}"]
+
+    out = []
+    for p in (d.get("probleme") or []):
+        # lipsa de functii sau module care nu se incarca = rosu, restul portocaliu
+        rosu = ("pierdut functia" in p or "NU se incarca" in p or "nu mai exista" in p)
+        out.append(("🔴 " if rosu else "🟠 ") + p)
+    for e in (d.get("erori_twilio") or [])[:3]:
+        out.append(f"🔴 telefonie: eroare Twilio {e.get('cod')} — {e.get('text','')[:110]}")
+    return out
+
+
 def try_auto_repair():
     if not DEPLOY_HOOK:
         return "\n\n(Fara auto-reparare: nu e configurat Render Deploy Hook.)"
@@ -169,13 +199,14 @@ def main():
     if not f_ok:
         problems.append("🔴 site-ul (frontend) nu raspunde: " + f_msg)
 
-    # Sold furnizori (doar daca backend-ul e sus - altfel nu are rost)
+    # Sold furnizori + verificare de cod (doar daca backend-ul e sus)
     if b_status != "DOWN":
         problems.extend(check_providers())
+        problems.extend(check_code())
 
     if not problems:
         status = "OK"
-    elif b_status == "DOWN" or not f_ok:
+    elif b_status == "DOWN" or not f_ok or any(p.startswith("🔴") for p in problems):
         status = "DOWN"
     else:
         status = "DEGRADED"
