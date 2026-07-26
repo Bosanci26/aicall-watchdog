@@ -148,6 +148,10 @@ def check_code():
     except Exception as e:
         return [f"🟠 nu pot verifica codul: {e}"]
 
+    ag = d.get("agent") or {}
+    print(f"  cod: {'OK' if d.get('ok') else 'PROBLEME'} | "
+          f"agent pornit={ag.get('pornit')} coada={ag.get('in_coada')} "
+          f"apeluri={ag.get('apeluri')}")
     out = []
     for p in (d.get("probleme") or []):
         # lipsa de functii sau module care nu se incarca = rosu, restul portocaliu
