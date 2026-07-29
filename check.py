@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Asistent de paza AiCall: verifica backend + frontend + SOLDUL la furnizori +
+Asistent de paza SmartBiz: verifica backend + frontend + SOLDUL la furnizori +
 CODUL (agentul de vanzari si traducerea au toate functiile? rutele exista?
 Twilio raporteaza erori de telefonie?), anunta pe Telegram cand ceva pica sau
 isi revine, si (optional) cere automat un redeploy pe Render.
@@ -27,7 +27,7 @@ STATE_FILE = "watchdog-state.txt"
 TWILIO_LOW_USD = float(os.environ.get("TWILIO_LOW_USD", "5"))       # ~100 min RO
 ELEVENLABS_LOW_PCT = float(os.environ.get("ELEVENLABS_LOW_PCT", "10"))  # sub 10% ramas
 
-# Serviciile fara de care AiCall nu poate traduce un apel
+# Serviciile fara de care SmartBiz nu poate traduce un apel
 CRIT_DEPS = ["supabase", "openai", "elevenlabs", "twilio"]
 
 
@@ -176,15 +176,15 @@ def try_auto_repair():
 
 def main():
     # Buton de test (workflow_dispatch cu simulate=down/degraded): trimite o
-    # alerta FALSA, clar marcata, fara sa atinga AiCall real, fara redeploy,
+    # alerta FALSA, clar marcata, fara sa atinga SmartBiz real, fara redeploy,
     # fara sa modifice starea. Ca userul sa vada cu ochii lui ca alarma suna.
     sim = os.environ.get("SIMULATE", "no").strip().lower()
     if sim in ("down", "degraded"):
         fake = ("🔴 backend NU raspunde" if sim == "down"
                 else "🟠 un serviciu (ex. OpenAI) ar fi cazut")
-        notify("🧪 <b>TEST caine de paza AiCall</b>\n\n"
+        notify("🧪 <b>TEST caine de paza SmartBiz</b>\n\n"
                "Asa arata o alerta reala cand ceva pica:\n\n" + fake +
-               "\n\n(Doar test — AiCall functioneaza normal, nu s-a repornit nimic.)")
+               "\n\n(Doar test — SmartBiz functioneaza normal, nu s-a repornit nimic.)")
         print("alerta de TEST trimisa:", sim)
         return
 
@@ -222,9 +222,9 @@ def main():
 
     if status != "OK" and prev == "OK":
         extra = try_auto_repair() if status == "DOWN" else ""
-        notify("⚠️ <b>AiCall are o problema</b>\n\n" + "\n".join(problems) + extra)
+        notify("⚠️ <b>SmartBiz are o problema</b>\n\n" + "\n".join(problems) + extra)
     elif status == "OK" and prev != "OK":
-        notify("✅ <b>AiCall functioneaza din nou</b> — totul e verde.")
+        notify("✅ <b>SmartBiz functioneaza din nou</b> — totul e verde.")
     else:
         print("stare neschimbata, fara notificare")
 

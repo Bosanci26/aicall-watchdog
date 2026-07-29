@@ -1,6 +1,6 @@
-# Asistent AiCall (monitorizare)
+# Asistent SmartBiz (monitorizare)
 
-Asistentul care vegheaza AiCall. Ruleaza pe GitHub Actions din 5 in 5 minute,
+Asistentul care vegheaza SmartBiz. Ruleaza pe GitHub Actions din 5 in 5 minute,
 verifica backend-ul (Render), site-ul (Vercel) si **soldul la furnizori**, si:
 
 - te **anunta pe Telegram** cand ceva pica sau isi revine (doar la schimbarea starii, fara spam);
@@ -26,4 +26,4 @@ Praguri optionale (variabile de mediu in workflow): `TWILIO_LOW_USD` (implicit 5
 - **Repara:** server blocat/crashat/adormit -> redeploy automat.
 - **Anunta (nu repara):** bani putini la furnizori (reincarci tu), erori de cod (le rezolva un om), pene externe (OpenAI/Twilio pica global).
 
-Test alarma (fara sa atinga productia): tab **Actions** > AiCall Watchdog > **Run workflow** > `simulate: down`.
+Test alarma (fara sa atinga productia): tab **Actions** > SmartBiz Watchdog > **Run workflow** > `simulate: down`.
