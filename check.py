@@ -123,6 +123,14 @@ def check_providers():
     elif not el.get("ok"):
         problems.append(f"🔴 ElevenLabs (vocea) nu raspunde: {el.get('error','?')}")
 
+    # Groq transcrie podcasturile pentru seful de cabinet. Nu tine apelurile in
+    # viata, deci nu e urgenta ca Twilio - dar daca tace, biblioteca de strategii
+    # se opreste fara sa se vada nicaieri. Cat timp cheia nu e pusa, tacem.
+    gq = p.get("groq", {})
+    if gq.get("configured") and not gq.get("ok"):
+        problems.append(f"🟠 <b>Groq</b> (transcrierile) nu merge: {gq.get('error','?')}. "
+                        f"Biblioteca de strategii sta pe loc. Cheie noua: console.groq.com/keys")
+
     sb = p.get("supabase", {})
     if not sb.get("ok"):
         problems.append(f"🔴 Supabase (baza de date) nu raspunde: {sb.get('error','?')}")
