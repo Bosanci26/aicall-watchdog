@@ -58,8 +58,17 @@ jobs:
       # Pasul asta ruleaza cand ceva a picat si spune chiar el, pe Telegram.
       # Aici NU folosim unelte de-ale altora, doar curl: daca tocmai uneltele
       # sunt problema, o unealta in plus ar pica la fel.
+      # `failure()` singur NU prinde anularile. Pe 6 august, in pana lor de
+      # Actions, rularile stateau in coada si erau ANULATE - nu picate - deci
+      # pasul asta nici nu se atingea. Cu `cancelled()` alaturi, se atinge.
+      #
+      # SLABICIUNEA CARE RAMANE, scrisa ca sa n-o uit: daca GitHub nu apuca sa
+      # PORNEASCA deloc treaba, niciun pas dinauntru nu ruleaza - nici asta.
+      # Un paznic care traieste in casa nu poate striga ca a ars casa. Pentru
+      # asta trebuie ceva din AFARA GitHub, care sa observe ca asistentul n-a
+      # mai dat semne de viata. De facut.
       - name: Spune pe Telegram ca a picat
-        if: failure()
+        if: failure() || cancelled()
         run: |
           curl -s -X POST \
             "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
