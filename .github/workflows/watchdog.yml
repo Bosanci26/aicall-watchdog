@@ -49,3 +49,21 @@ jobs:
         with:
           path: watchdog-state.txt
           key: watchdog-state-${{ github.run_id }}
+
+      # PLASA DE SIGURANTA. Pe 6 august, verificarea a picat inainte sa apuce
+      # sa ruleze - GitHub n-a putut aduce uneltele ("Service Unavailable") -
+      # deci check.py n-a pornit deloc si n-a avut cine sa dea alerta. Lucian a
+      # aflat dintr-un email de la GitHub, desi ceruse pe Telegram.
+      #
+      # Pasul asta ruleaza cand ceva a picat si spune chiar el, pe Telegram.
+      # Aici NU folosim unelte de-ale altora, doar curl: daca tocmai uneltele
+      # sunt problema, o unealta in plus ar pica la fel.
+      - name: Spune pe Telegram ca a picat
+        if: failure()
+        run: |
+          curl -s -X POST \
+            "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
+            -d chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
+            -d parse_mode="HTML" \
+            -d text="⚠️ <b>Asistentul de monitorizare a picat</b>%0A%0ANu a apucat sa verifice SmartBiz. Cel mai des e o pana la GitHub si trece singura la rulare urmatoare (5 min).%0A%0ADaca se repeta de mai multe ori la rand, atunci e altceva.%0A%0A<a href=\"https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}\">Vezi ce s-a intamplat</a>" \
+            > /dev/null || true
