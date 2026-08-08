@@ -170,6 +170,38 @@ def check_code():
     return out
 
 
+def check_functii():
+    """
+    Apasa pe rand pe fiecare buton important si spune care nu raspunde.
+
+    Lucian, 8 august: "aceasta este o problema mare si nu am fost anuntat...
+    vreau sa ruleze peste tot si sa incerce toate functiile si sa ma anunte el
+    ce nu merge".
+
+    Pana acum verificam daca CASA e in picioare: raspunde backend-ul, mai sunt
+    bani la furnizori. Dar vocea putea fi moarta de trei zile cu casa intreaga -
+    si chiar a fost. Cheia ElevenLabs murise pe 5 august, iar el a aflat abia
+    cand a incercat singur sa-si asculte vocea, dupa trei zile de apeluri fara
+    voce. Nimeni nu i-a spus, fiindca nimeni nu apasa pe butoane.
+
+    Aici se incearca: vocea, traducerea, telefonia, conturile si adresa de pe
+    care se deschide aplicatia.
+    """
+    if not (BACKEND and HEALTH_KEY):
+        return []
+    try:
+        code, body = http_get(f"{BACKEND}/api/health/functii?key={HEALTH_KEY}", timeout=60)
+        if code != 200:
+            return [f"🟠 nu pot incerca functiile (raspuns {code})"]
+        d = json.loads(body)
+    except Exception as e:
+        return [f"🟠 nu pot incerca functiile: {e}"]
+
+    merg = ", ".join(d.get("merg") or []) or "niciuna"
+    print(f"  functii: {'TOATE MERG' if d.get('ok') else 'PROBLEME'} | merg: {merg}")
+    return list(d.get("probleme") or [])
+
+
 def try_auto_repair():
     if not DEPLOY_HOOK:
         return "\n\n(Fara auto-reparare: nu e configurat Render Deploy Hook.)"
@@ -215,6 +247,8 @@ def main():
     if b_status != "DOWN":
         problems.extend(check_providers())
         problems.extend(check_code())
+        # Si CHIAR functiile, nu doar daca serverul e sus.
+        problems.extend(check_functii())
 
     if not problems:
         status = "OK"
