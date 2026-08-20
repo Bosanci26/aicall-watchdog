@@ -1,0 +1,111 @@
+name: Proba automata SmartBiz (la 5 ore)
+
+# Cerut de Lucian pe 20 aug 2026: "un test odata la 5h in care sa incerci sa
+# gasesti ceva si sa imbunatatesti mereu... fa cum este botul de securitate".
+# Ruleaza pe GitHub, independent de orice laptop: porneste robotul de proba
+# DE PE SERVER (doi roboti vorbesc prin podul live), asteapta judecata si
+# trimite raportul pe Telegram. Reparatiile le face Claude in sesiune - aici
+# doar se masoara si se raporteaza, ca sa nu scape nicio zi nemasurata.
+
+on:
+  schedule:
+    - cron: '19 2,7,12,17,22 * * *'   # UTC, de 5 ori pe zi (~la 5 ore)
+  workflow_dispatch:
+
+concurrency:
+  group: proba-smartbiz
+  cancel-in-progress: false
+
+jobs:
+  proba:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Ruleaza proba si raporteaza
+        env:
+          HEALTH_KEY: ${{ secrets.HEALTH_KEY }}
+          TG_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TG_CHAT: ${{ secrets.TELEGRAM_CHAT_ID }}
+          BACKEND: https://aicall-backend-1dwi.onrender.com
+        run: |
+          python3 - <<'PY'
+          import json, os, time, urllib.request, urllib.parse, datetime
+
+          B = os.environ["BACKEND"]; K = os.environ["HEALTH_KEY"]
+
+          def get(url):
+              with urllib.request.urlopen(url, timeout=45) as r:
+                  return json.load(r)
+
+          def post(url):
+              req = urllib.request.Request(url, method="POST")
+              with urllib.request.urlopen(req, timeout=45) as r:
+                  return json.load(r)
+
+          def telegram(text):
+              data = urllib.parse.urlencode({
+                  "chat_id": os.environ["TG_CHAT"], "text": text}).encode()
+              urllib.request.urlopen(urllib.request.Request(
+                  f"https://api.telegram.org/bot{os.environ['TG_TOKEN']}/sendMessage",
+                  data=data), timeout=30)
+
+          # rotatia: alt scenariu+conditie la fiecare rulare, dupa ceas
+          ROTATIA = [("lung", "curat"), ("clauze", "curat"), ("lung", "galagie"),
+                     ("clauze", "telefon"), ("lung", "toate")]
+          acum = datetime.datetime.utcnow()
+          scenariu, conditie = ROTATIA[(acum.timetuple().tm_yday * 24 + acum.hour) // 5 % len(ROTATIA)]
+
+          # 1) serverul e in picioare?
+          try:
+              h = get(f"{B}/api/health/functii?key={K}")
+              if h.get("verificate") != 13 or h.get("probleme"):
+                  telegram(f"⚠️ Proba automata: serverul are probleme {h.get('probleme')} - "
+                           "asistentul de paza se ocupa; proba sare peste rularea asta.")
+                  raise SystemExit(0)
+          except SystemExit:
+              raise
+          except Exception as e:
+              telegram(f"⚠️ Proba automata: nu ajung la server ({str(e)[:80]}). "
+                       "Asistentul de paza ar trebui sa fi alertat deja.")
+              raise SystemExit(0)
+
+          # 2) apeluri reale proaspete? atunci nu ne bagam peste Lucian
+          try:
+              timpii = get(f"{B}/api/health/timpii?key={K}")
+              reale = [r for r in timpii.get("replici", [])
+                       if not str(r.get("pod", "")).startswith("CAproba")]
+          except Exception:
+              timpii, reale = {}, []
+
+          # 3) pornim proba pe server
+          try:
+              post(f"{B}/api/robot/proba-automata?key={K}&scenariu={scenariu}&conditie={conditie}")
+          except urllib.error.HTTPError as e:
+              if e.code == 409:
+                  telegram("🤖 Proba automata: robotul era deja intr-un test - sar peste.")
+                  raise SystemExit(0)
+              raise
+
+          # 4) asteptam judecata (max ~10 min)
+          jurnal = []
+          for _ in range(60):
+              time.sleep(10)
+              s = get(f"{B}/api/robot/stare-automata?key={K}")
+              jurnal = s.get("jurnal", [])
+              if not s.get("ruleaza"):
+                  break
+
+          cifre = next((l for l in jurnal if l.startswith("CIFRE:")), "CIFRE: lipsa")
+          nota = next((l for l in jurnal if "Nota general" in l), "nota: lipsa")
+
+          # 5) raportul pe Telegram
+          mesaj = [f"🤖 Proba automata SmartBiz — {scenariu} + {conditie}",
+                   cifre, nota[:400]]
+          if reale:
+              tot = sorted(r["total_gura_ureche_ms"] for r in reale
+                           if r.get("total_gura_ureche_ms"))
+              if tot:
+                  mesaj.append(f"📞 Apeluri reale de la restart: {len(reale)} replici, "
+                               f"median {tot[len(tot)//2]} ms, cea mai rea {tot[-1]} ms")
+          telegram("\n".join(mesaj))
+          PY
