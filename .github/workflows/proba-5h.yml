@@ -97,10 +97,13 @@ jobs:
 
           cifre = next((l for l in jurnal if l.startswith("CIFRE:")), "CIFRE: lipsa")
           nota = next((l for l in jurnal if "Nota general" in l), "nota: lipsa")
+          trend = next((l for l in jurnal if l.startswith("TREND")), "")
 
           # 5) raportul pe Telegram
           mesaj = [f"🤖 Proba automata SmartBiz — {scenariu} + {conditie}",
                    cifre, nota[:400]]
+          if trend:
+              mesaj.append(trend[:200])
           if reale:
               tot = sorted(r["total_gura_ureche_ms"] for r in reale
                            if r.get("total_gura_ureche_ms"))
