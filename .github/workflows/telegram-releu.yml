@@ -1,0 +1,42 @@
+name: Releu Telegram
+
+# Poarta prin care Claude de pe Mac trimite mesaje pe Telegram (@amatecbot)
+# fara sa aiba tokenul local: tokenul sta doar in secretele repo-ului.
+# Declansare: repository_dispatch cu event_type=telegram si
+# client_payload.text = mesajul. Textul NU se scrie in log.
+
+on:
+  repository_dispatch:
+    types: [telegram]
+
+jobs:
+  trimite:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Trimite pe Telegram
+        env:
+          TG_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TG_CHAT: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TEXT: ${{ github.event.client_payload.text }}
+        run: |
+          python3 - <<'PY'
+          import os, urllib.request, urllib.parse
+          text = os.environ.get("TEXT") or ""
+          if not text.strip():
+              raise SystemExit(0)
+          # Telegram taie la 4096; impartim pe bucati la granite de rand
+          bucati, cur = [], ""
+          for rand in text.splitlines(keepends=True):
+              if len(cur) + len(rand) > 3900:
+                  bucati.append(cur); cur = ""
+              cur += rand
+          if cur: bucati.append(cur)
+          for b in bucati[:6]:
+              data = urllib.parse.urlencode({
+                  "chat_id": os.environ["TG_CHAT"], "text": b}).encode()
+              urllib.request.urlopen(urllib.request.Request(
+                  f"https://api.telegram.org/bot{os.environ['TG_TOKEN']}/sendMessage",
+                  data=data), timeout=30)
+          print(f"trimis: {len(bucati)} mesaj(e), {len(text)} caractere")
+          PY
