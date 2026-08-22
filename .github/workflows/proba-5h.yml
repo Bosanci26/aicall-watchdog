@@ -12,7 +12,7 @@ name: Probele automate SmartBiz (fulger la 3h + bateria zilnica)
 on:
   schedule:
     - cron: '19 1 * * *'            # 04:19 RO - BATERIA completa
-    - cron: '19 4,7,10,13,16,19,22 * * *'   # la 3 ore - FULGER
+    - cron: '19 6,14,22 * * *'   # la 8 ore - FULGER (rarit 22 aug, cerut de Lucian)
   workflow_dispatch:
     inputs:
       mod:
@@ -113,7 +113,7 @@ jobs:
 
           if mod == "fulger":
               CONDITII = ["curat", "telefon", "galagie"]
-              conditie = CONDITII[(acum.timetuple().tm_yday * 8 + acum.hour // 3) % len(CONDITII)]
+              conditie = CONDITII[(acum.timetuple().tm_yday * 3 + acum.hour // 8) % len(CONDITII)]
               try:
                   cifre, nota_l, nota, trend, pierdute = ruleaza("transport", conditie, rabdare_start=1)
               except Exception as e:
