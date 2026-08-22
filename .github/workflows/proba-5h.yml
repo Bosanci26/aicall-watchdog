@@ -1,16 +1,25 @@
-name: Proba automata SmartBiz (la 5 ore)
+name: Probele automate SmartBiz (fulger la 3h + bateria zilnica)
 
-# Cerut de Lucian pe 20 aug 2026: "un test odata la 5h in care sa incerci sa
-# gasesti ceva si sa imbunatatesti mereu... fa cum este botul de securitate".
-# Ruleaza pe GitHub, independent de orice laptop: porneste robotul de proba
-# DE PE SERVER (doi roboti vorbesc prin podul live), asteapta judecata si
-# trimite raportul pe Telegram. Reparatiile le face Claude in sesiune - aici
-# doar se masoara si se raporteaza, ca sa nu scape nicio zi nemasurata.
+# v2, 22 aug 2026 - Lucian: "e cam mult odata la 5h si face cam putine la ce
+# potential are". Regandit pe modelul paznic + inspectie:
+#   FULGER (la 3 ore): un apel scurt de proba (scenariul transport, conditia
+#     prin rotatie). Prinde repede orice stricaciune. Pe Telegram scrie DOAR
+#     daca e ceva in neregula (replici pierdute / nota cazuta / server bolnav).
+#   BATERIA (o data pe zi, 04:19 ora RO): TOATE scenariile si conditiile,
+#     cap-coada, cu raport complet pe Telegram - tabelul zilei, cu trend.
+# Costul estimat: ~1,5-2 $/zi in faza de reparatii; se rareste dupa lansare.
 
 on:
   schedule:
-    - cron: '19 2,7,12,17,22 * * *'   # UTC, de 5 ori pe zi (~la 5 ore)
+    - cron: '19 1 * * *'            # 04:19 RO - BATERIA completa
+    - cron: '19 4,7,10,13,16,19,22 * * *'   # la 3 ore - FULGER
   workflow_dispatch:
+    inputs:
+      mod:
+        description: "fulger sau baterie"
+        type: choice
+        options: ["fulger", "baterie"]
+        default: "baterie"
 
 concurrency:
   group: proba-smartbiz
@@ -19,17 +28,18 @@ concurrency:
 jobs:
   proba:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 55
     steps:
-      - name: Ruleaza proba si raporteaza
+      - name: Ruleaza si raporteaza
         env:
           HEALTH_KEY: ${{ secrets.HEALTH_KEY }}
           TG_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TG_CHAT: ${{ secrets.TELEGRAM_CHAT_ID }}
           BACKEND: https://aicall-backend-1dwi.onrender.com
+          MOD_MANUAL: ${{ inputs.mod }}
         run: |
           python3 - <<'PY'
-          import json, os, time, urllib.request, urllib.parse, datetime
+          import json, os, re, time, urllib.request, urllib.parse, datetime
 
           B = os.environ["BACKEND"]; K = os.environ["HEALTH_KEY"]
 
@@ -49,66 +59,102 @@ jobs:
                   f"https://api.telegram.org/bot{os.environ['TG_TOKEN']}/sendMessage",
                   data=data), timeout=30)
 
-          # rotatia: alt scenariu+conditie la fiecare rulare, dupa ceas
-          ROTATIA = [("lung", "curat"), ("clauze", "curat"), ("lung", "galagie"),
-                     ("clauze", "telefon"), ("lung", "toate")]
           acum = datetime.datetime.utcnow()
-          scenariu, conditie = ROTATIA[(acum.timetuple().tm_yday * 24 + acum.hour) // 5 % len(ROTATIA)]
+          mod = os.environ.get("MOD_MANUAL") or ("baterie" if acum.hour == 1 else "fulger")
 
-          # 1) serverul e in picioare?
+          # 1) serverul in picioare?
           try:
               h = get(f"{B}/api/health/functii?key={K}")
               if h.get("verificate") != 13 or h.get("probleme"):
-                  telegram(f"⚠️ Proba automata: serverul are probleme {h.get('probleme')} - "
-                           "asistentul de paza se ocupa; proba sare peste rularea asta.")
+                  telegram(f"⚠️ Probe: serverul are probleme {h.get('probleme')} - "
+                           "asistentul de paza se ocupa.")
                   raise SystemExit(0)
           except SystemExit:
               raise
           except Exception as e:
-              telegram(f"⚠️ Proba automata: nu ajung la server ({str(e)[:80]}). "
-                       "Asistentul de paza ar trebui sa fi alertat deja.")
+              telegram(f"⚠️ Probe: nu ajung la server ({str(e)[:80]}).")
               raise SystemExit(0)
 
-          # 2) apeluri reale proaspete? atunci nu ne bagam peste Lucian
+          # apeluri reale (pentru randul din raport)
           try:
               timpii = get(f"{B}/api/health/timpii?key={K}")
               reale = [r for r in timpii.get("replici", [])
                        if not str(r.get("pod", "")).startswith("CAproba")]
           except Exception:
-              timpii, reale = {}, []
+              reale = []
 
-          # 3) pornim proba pe server
-          try:
-              post(f"{B}/api/robot/proba-automata?key={K}&scenariu={scenariu}&conditie={conditie}")
-          except urllib.error.HTTPError as e:
-              if e.code == 409:
-                  telegram("🤖 Proba automata: robotul era deja intr-un test - sar peste.")
+          def ruleaza(scenariu, conditie, rabdare_start=3):
+              """Porneste o proba pe server si asteapta judecata. Intoarce
+              (cifre, nota_text, nota_int, trend, pierdute)."""
+              for inc in range(rabdare_start):
+                  try:
+                      post(f"{B}/api/robot/proba-automata?key={K}"
+                           f"&scenariu={scenariu}&conditie={urllib.parse.quote(conditie)}")
+                      break
+                  except urllib.error.HTTPError as e:
+                      if e.code == 409 and inc < rabdare_start - 1:
+                          time.sleep(120); continue
+                      raise
+              jurnal = []
+              for _ in range(90):
+                  time.sleep(10)
+                  s = get(f"{B}/api/robot/stare-automata?key={K}")
+                  jurnal = s.get("jurnal", [])
+                  if not s.get("ruleaza"):
+                      break
+              cifre = next((l for l in jurnal if l.startswith("CIFRE:")), "CIFRE: lipsa")
+              nota_l = next((l for l in jurnal if "Nota general" in l), "")
+              trend = next((l for l in jurnal if l.startswith("TREND")), "")
+              m = re.search(r"Nota general\S*:\s*(\d+)", nota_l)
+              nota = int(m.group(1)) if m else None
+              mp = re.search(r"(\d+)/(\d+) replici ajunse", cifre)
+              pierdute = (int(mp.group(2)) - int(mp.group(1))) if mp else 0
+              return cifre, nota_l, nota, trend, pierdute
+
+          if mod == "fulger":
+              CONDITII = ["curat", "telefon", "galagie"]
+              conditie = CONDITII[(acum.timetuple().tm_yday * 8 + acum.hour // 3) % len(CONDITII)]
+              try:
+                  cifre, nota_l, nota, trend, pierdute = ruleaza("transport", conditie, rabdare_start=1)
+              except Exception as e:
+                  telegram(f"⚠️ Fulger: proba nu a pornit ({str(e)[:80]})")
                   raise SystemExit(0)
-              raise
+              # alarma: pierderi, nota sub trend-5, sau eroare
+              rau = pierdute > 0
+              if trend:
+                  mt = re.search(r"data trecuta (\d+), acum (\d+)", trend)
+                  if mt and int(mt.group(2)) < int(mt.group(1)) - 5:
+                      rau = True
+              if nota is None or any("eroare" in l for l in [cifre, nota_l]):
+                  rau = True
+              if rau:
+                  telegram("⚡ Fulger SmartBiz (transport + " + conditie + ") - CEVA E RAU:\n"
+                           + cifre + "\n" + nota_l[:300] + ("\n" + trend[:200] if trend else ""))
+              # daca e bine: tacere - bateria zilnica aduce tabelul
 
-          # 4) asteptam judecata (max ~10 min)
-          jurnal = []
-          for _ in range(60):
-              time.sleep(10)
-              s = get(f"{B}/api/robot/stare-automata?key={K}")
-              jurnal = s.get("jurnal", [])
-              if not s.get("ruleaza"):
-                  break
-
-          cifre = next((l for l in jurnal if l.startswith("CIFRE:")), "CIFRE: lipsa")
-          nota = next((l for l in jurnal if "Nota general" in l), "nota: lipsa")
-          trend = next((l for l in jurnal if l.startswith("TREND")), "")
-
-          # 5) raportul pe Telegram
-          mesaj = [f"🤖 Proba automata SmartBiz — {scenariu} + {conditie}",
-                   cifre, nota[:400]]
-          if trend:
-              mesaj.append(trend[:200])
-          if reale:
-              tot = sorted(r["total_gura_ureche_ms"] for r in reale
-                           if r.get("total_gura_ureche_ms"))
-              if tot:
-                  mesaj.append(f"📞 Apeluri reale de la restart: {len(reale)} replici, "
-                               f"median {tot[len(tot)//2]} ms, cea mai rea {tot[-1]} ms")
-          telegram("\n".join(mesaj))
+          else:
+              BATERIA = [("lung", "curat"), ("clauze", "curat"), ("lung", "galagie"),
+                         ("clauze", "telefon"), ("lung", "toate")]
+              linii = ["🔋 Bateria zilnica SmartBiz — toate probele:"]
+              for scenariu, conditie in BATERIA:
+                  try:
+                      cifre, nota_l, nota, trend, pierdute = ruleaza(scenariu, conditie)
+                      m = re.search(r"Nota general\S*:\s*(\d+)/100", nota_l)
+                      pe_scurt = m.group(1) if m else "?"
+                      extra = f" (pierdute {pierdute})" if pierdute else ""
+                      tr = ""
+                      if trend:
+                          mt = re.search(r"data trecuta (\d+)", trend)
+                          if mt: tr = f" | data trecuta {mt.group(1)}"
+                      linii.append(f"• {scenariu}+{conditie}: {pe_scurt}/100{extra}{tr}")
+                  except Exception as e:
+                      linii.append(f"• {scenariu}+{conditie}: EROARE {str(e)[:50]}")
+              linii.append("Praguri: 85 curat / 80 telefon / 70 toate")
+              if reale:
+                  tot = sorted(r["total_gura_ureche_ms"] for r in reale
+                               if r.get("total_gura_ureche_ms"))
+                  if tot:
+                      linii.append(f"📞 Apeluri reale: {len(reale)} replici, "
+                                   f"median {tot[len(tot)//2]} ms")
+              telegram("\n".join(linii))
           PY
