@@ -50,15 +50,35 @@ jobs:
           if [ -z "$HOOK" ]; then echo "lipseste carligul de deploy"; exit 1; fi
           code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$HOOK")
           echo "carlig apasat, raspuns $code"
-          [ "$code" = "200" ] || [ "$code" = "201" ]
+          # 409 = Render are deja un deploy in lucru. Nu e o eroare a noastra si
+          # nu inseamna ca deployul va reusi - inseamna doar ca e cineva la coada.
+          # (23 aug: aici m-am inselat o data si am crezut ca deployurile sunt
+          # intepenite, cand de fapt PORNEAU si ESUAU - vezi emailurile Render.)
+          case "$code" in
+            200|201) echo "deploy pornit acum" ;;
+            409)     echo "exista deja un deploy in lucru - il lasam sa termine" ;;
+            *)       echo "carligul a raspuns $code - ceva nu e in regula"; exit 1 ;;
+          esac
 
-      - name: Asteapta serverul inapoi
+      - name: Vezi daca a intrat codul nou
+        env:
+          HEALTH_KEY: ${{ secrets.HEALTH_KEY }}
         run: |
-          for i in $(seq 1 40); do
-            sleep 15
-            code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 20 \
-                   https://aicall-backend-1dwi.onrender.com/ || true)
-            if [ "$code" = "200" ]; then echo "serverul e inapoi (dupa ~$((i*15))s)"; exit 0; fi
-            echo "inca nu ($code)"
+          # Semnul gratuit de repornire: jurnalul probelor sta in memoria
+          # procesului, deci se GOLESTE cand serverul se ridica din nou. Daca
+          # ramane la acelasi numar de randuri, deployul NU a intrat - cel mai
+          # probabil a esuat, si atunci raspunsul e in emailul de la Render.
+          U="https://aicall-backend-1dwi.onrender.com/api/robot/stare-automata?key=$HEALTH_KEY"
+          inainte=$(curl -s --max-time 30 "$U" | python3 -c "import sys,json;print(len(json.load(sys.stdin).get('jurnal',[])))" 2>/dev/null || echo -1)
+          echo "randuri in jurnal inainte: $inainte"
+          for i in $(seq 1 30); do
+            sleep 20
+            acum=$(curl -s --max-time 30 "$U" | python3 -c "import sys,json;print(len(json.load(sys.stdin).get('jurnal',[])))" 2>/dev/null || echo -1)
+            if [ "$acum" = "0" ] && [ "$inainte" != "0" ]; then
+              echo "serverul s-a ridicat cu codul nou (dupa ~$((i*20))s)"; exit 0
+            fi
+            echo "inca nu (randuri=$acum)"
           done
-          echo "serverul nu s-a intors in 10 minute"; exit 1
+          echo "ZECE MINUTE si serverul tot nu s-a repornit - deployul a ESUAT."
+          echo "Raspunsul e in emailul 'deploy failed' de la Render, la View Logs."
+          exit 1
