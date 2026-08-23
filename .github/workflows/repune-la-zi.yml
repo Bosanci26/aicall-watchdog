@@ -1,0 +1,64 @@
+name: Repune serverul la zi
+
+# Pornit cu mana (sau de asistent) cand se vede ca ultimul push NU a ajuns pe
+# server - adica reparatii comise si trimise, dar codul viu e tot cel vechi.
+# Foloseste acelasi carlig de deploy pe care il apasa si paza cand serverul
+# cade, deci nu ghiceste nimic: cheia sta in secretele repo-ului.
+#
+# ATENTIE: repornirea taie apelurile aflate in desfasurare. De aceea pasul
+# intai intreaba serverul daca vorbeste cineva chiar acum si se opreste daca da.
+
+on:
+  workflow_dispatch:
+    inputs:
+      motiv:
+        description: "de ce se repune la zi"
+        required: false
+        default: "push care nu a ajuns pe server"
+
+jobs:
+  repune:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Nu deranja un apel in curs
+        env:
+          HEALTH_KEY: ${{ secrets.HEALTH_KEY }}
+        run: |
+          python3 - <<'PY'
+          import json, os, sys, urllib.request
+          B = "https://aicall-backend-1dwi.onrender.com"
+          try:
+              with urllib.request.urlopen(
+                      f"{B}/api/health/timpii?key={os.environ['HEALTH_KEY']}", timeout=45) as r:
+                  d = json.load(r)
+          except Exception as e:
+              print(f"nu ajung la server ({e}) - probabil chiar de asta repunem"); sys.exit(0)
+          reale = [x for x in d.get("replici", [])
+                   if not str(x.get("pod", "")).startswith("CAproba")]
+          if reale:
+              print(f"STOP: {len(reale)} replici de apel real in cutia neagra - "
+                    "nu repornesc peste un client care vorbeste")
+              sys.exit(1)
+          print("nicio replica de apel real - se poate reporni")
+          PY
+
+      - name: Apasa carligul de deploy
+        env:
+          HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
+        run: |
+          if [ -z "$HOOK" ]; then echo "lipseste carligul de deploy"; exit 1; fi
+          code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$HOOK")
+          echo "carlig apasat, raspuns $code"
+          [ "$code" = "200" ] || [ "$code" = "201" ]
+
+      - name: Asteapta serverul inapoi
+        run: |
+          for i in $(seq 1 40); do
+            sleep 15
+            code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 20 \
+                   https://aicall-backend-1dwi.onrender.com/ || true)
+            if [ "$code" = "200" ]; then echo "serverul e inapoi (dupa ~$((i*15))s)"; exit 0; fi
+            echo "inca nu ($code)"
+          done
+          echo "serverul nu s-a intors in 10 minute"; exit 1
