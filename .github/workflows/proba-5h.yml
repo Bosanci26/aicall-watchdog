@@ -29,7 +29,10 @@ jobs:
   proba:
     runs-on: ubuntu-latest
     timeout-minutes: 55
+    permissions:
+      contents: write        # ca sa poata scrie randul in registru.jsonl
     steps:
+      - uses: actions/checkout@v4
       - name: Ruleaza si raporteaza
         env:
           HEALTH_KEY: ${{ secrets.HEALTH_KEY }}
@@ -58,6 +61,18 @@ jobs:
               urllib.request.urlopen(urllib.request.Request(
                   f"https://api.telegram.org/bot{os.environ['TG_TOKEN']}/sendMessage",
                   data=data), timeout=30)
+
+          import registru   # cutia neagra (23 aug)
+
+          # AMPRENTA: pe ce cod s-a masurat. Fara ea, doua note nu se pot
+          # compara intre ele - poate ca intre timp s-a schimbat produsul.
+          try:
+              r0 = get(f"{B}/")
+              AMPRENTA = {"cod": r0.get("code_marker")}
+          except Exception:
+              AMPRENTA = {"cod": None}
+
+          RANDURI = []   # se scriu in registru.jsonl la finalul rularii
 
           acum = datetime.datetime.utcnow()
           mod = os.environ.get("MOD_MANUAL") or ("baterie" if acum.hour == 1 else "fulger")
@@ -109,6 +124,13 @@ jobs:
               nota = int(m.group(1)) if m else None
               mp = re.search(r"(\d+)/(\d+) replici ajunse", cifre)
               pierdute = (int(mp.group(2)) - int(mp.group(1))) if mp else 0
+              # cutia neagra: rularea asta isi scrie randul, orice ar fi iesit
+              try:
+                  RANDURI.append(registru.rand_din_jurnal(
+                      jurnal, scenariu, conditie, AMPRENTA,
+                      datetime.datetime.utcnow().isoformat() + "Z"))
+              except Exception as e:
+                  print(f"registru: nu am putut scrie randul ({e})")
               return cifre, nota_l, nota, trend, pierdute
 
           if mod == "fulger":
@@ -163,4 +185,27 @@ jobs:
                       linii.append(f"📞 Apeluri reale: {len(reale)} replici, "
                                    f"median {tot[len(tot)//2]} ms")
               telegram("\n".join(linii))
+
+          # ---- cutia neagra: randurile pe disc, indiferent de mod ----
+          if RANDURI:
+              with open("registru.jsonl", "a", encoding="utf-8") as f:
+                  for r in RANDURI:
+                      f.write(json.dumps(r, ensure_ascii=False) + "\n")
+              print(f"registru: {len(RANDURI)} rand(uri) scrise")
           PY
+
+      - name: Pastreaza randurile in registru
+        if: always()
+        run: |
+          if [ -n "$(git status --porcelain registru.jsonl)" ]; then
+            git config user.name "asistentul de probe"
+            git config user.email "actions@github.com"
+            git add registru.jsonl
+            git commit -q -m "registru: rulare $(date -u +%Y-%m-%dT%H:%MZ)"
+            # cineva poate fi scris intre timp: luam ce e nou si punem randul peste
+            git pull --rebase -q origin master || true
+            git push -q origin HEAD:master
+            echo "randurile sunt in registru"
+          else
+            echo "nimic de scris"
+          fi
