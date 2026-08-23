@@ -119,8 +119,14 @@ jobs:
               except Exception as e:
                   telegram(f"⚠️ Fulger: proba nu a pornit ({str(e)[:80]})")
                   raise SystemExit(0)
-              # alarma: pierderi, nota sub trend-5, sau eroare
-              rau = pierdute > 0
+              # alarma (rescrisa 23 aug - Lucian: "vreau doar cele importante").
+              # Pe "galagie" robotul intra prin pod, deci FARA curatarea Krisp de
+              # pe fir: replici pierdute si note de 30-45 sunt starea cunoscuta a
+              # santierului, nu o stricaciune noua. Acolo tipam doar la cadere
+              # fata de propriul istoric sau la eroare. Pe curat/telefon, orice
+              # replica pierduta ramane semnal - acolo nu are voie sa se piarda.
+              SANTIER = {"galagie"}
+              rau = pierdute > 0 and conditie not in SANTIER
               if trend:
                   mt = re.search(r"data trecuta (\d+), acum (\d+)", trend)
                   if mt and int(mt.group(2)) < int(mt.group(1)) - 5:
