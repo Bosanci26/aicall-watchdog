@@ -47,13 +47,32 @@ jobs:
                   d = json.load(r)
           except Exception as e:
               print(f"nu ajung la server ({e}) - probabil chiar de asta repunem"); sys.exit(0)
-          reale = [x for x in d.get("replici", [])
-                   if not str(x.get("pod", "")).startswith("CAproba")]
-          if reale:
-              print(f"STOP: {len(reale)} replici de apel real in cutia neagra - "
+          # DOAR CE E PROASPAT. Cutia neagra tine ultimele ~200 de replici,
+          # deci "exista replici reale" ramane adevarat ore intregi dupa un
+          # apel - si atunci nu s-ar mai putea repune serverul niciodata.
+          # Ne intereseaza doar daca vorbeste cineva ACUM: ultimele 10 minute.
+          import datetime
+          acum = datetime.datetime.now(datetime.timezone.utc)
+          proaspete = []
+          for x in d.get("replici", []):
+              if str(x.get("pod", "")).startswith("CAproba"):
+                  continue
+              ora = str(x.get("ora") or "")
+              try:
+                  h, m, s = (int(v) for v in ora.split(":"))
+                  t = acum.replace(hour=h, minute=m, second=s, microsecond=0)
+                  if t > acum:                      # a trecut miezul noptii
+                      t -= datetime.timedelta(days=1)
+                  varsta = (acum - t).total_seconds()
+              except Exception:
+                  varsta = 0                        # ora ilizibila = o tratam ca proaspata
+              if varsta < 600:
+                  proaspete.append(x)
+          if proaspete:
+              print(f"STOP: {len(proaspete)} replici de apel real in ultimele 10 minute - "
                     "nu repornesc peste un client care vorbeste")
               sys.exit(1)
-          print("nicio replica de apel real - se poate reporni")
+          print("niciun apel real in ultimele 10 minute - se poate reporni")
           PY
 
       - name: Porneste deployul si asteapta verdictul
