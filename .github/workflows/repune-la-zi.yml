@@ -21,6 +21,19 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      # 24 aug: Lucian a dat sa sune exact cand reporneam serverul si a primit
+      # "nu pot atinge backendul", fara sa stie de ce. Regula lui: la ORICE nu
+      # merge, sa fie instiintat. Deci acum spunem INAINTE si DUPA.
+      - name: Anunta ca serverul se repune la zi
+        env:
+          TG_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TG_CHAT: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          curl -s -X POST "https://api.telegram.org/bot$TG_TOKEN/sendMessage" \
+            --data-urlencode "chat_id=$TG_CHAT" \
+            --data-urlencode "text=SERVERUL SE REPORNESTE ACUM (aduc codul nou). Timp de un minut aplicatia poate spune ca nu ajunge la server - e normal, nu suna in minutul asta. Iti scriu cand e gata." >/dev/null
+          echo "anuntat"
+
       - name: Nu deranja un apel in curs
         env:
           HEALTH_KEY: ${{ secrets.HEALTH_KEY }}
@@ -100,3 +113,19 @@ jobs:
           echo "ZECE MINUTE si serverul tot nu s-a repornit - deployul a ESUAT."
           echo "Raspunsul e in emailul 'deploy failed' de la Render, la View Logs."
           exit 1
+
+      - name: Anunta rezultatul
+        if: always()
+        env:
+          TG_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TG_CHAT: ${{ secrets.TELEGRAM_CHAT_ID }}
+          REZULTAT: ${{ job.status }}
+        run: |
+          if [ "$REZULTAT" = "success" ]; then
+            MSG="SERVERUL E INAPOI, cu codul nou. Poti suna."
+          else
+            MSG="ATENTIE: repunerea serverului la zi A PICAT ($REZULTAT). Serverul vechi merge mai departe, deci poti suna - dar reparatiile nu au intrat. Ma uit in loguri."
+          fi
+          curl -s -X POST "https://api.telegram.org/bot$TG_TOKEN/sendMessage" \
+            --data-urlencode "chat_id=$TG_CHAT" --data-urlencode "text=$MSG" >/dev/null
+          echo "anuntat: $REZULTAT"
