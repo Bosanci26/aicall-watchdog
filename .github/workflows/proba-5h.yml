@@ -74,6 +74,24 @@ jobs:
 
           RANDURI = []   # se scriu in registru.jsonl la finalul rularii
 
+
+          def _fara_masuratoare(motiv: str, conditie: str = "-"):
+              """
+              TESTELE CARE TAC (25 august). Pana azi, cand proba nu putea rula,
+              scriptul trimitea un mesaj si iesea cu cod 0: jobul aparea VERDE
+              in Actions, registrul nu primea nimic, si a doua zi nu se putea
+              afla ca in noaptea aia nu s-a masurat nimic. Lucian: "cand te pun
+              sa testezi, vreau sa fie bine". Deci acum tacerea lasa urma: un
+              rand valid=false in registru, si jobul iese ROSU.
+              """
+              RANDURI.append({
+                  "cand": datetime.datetime.utcnow().isoformat() + "Z",
+                  "scenariu": "-", "conditie": conditie, "nota": None,
+                  "valid": False, "motiv": motiv,
+                  "sub": {}, "masurat": {}, "judecata": {},
+                  "amprenta": AMPRENTA, "stricate": [],
+              })
+
           acum = datetime.datetime.utcnow()
           mod = os.environ.get("MOD_MANUAL") or ("baterie" if acum.hour == 1 else "fulger")
 
@@ -81,14 +99,18 @@ jobs:
           try:
               h = get(f"{B}/api/health/functii?key={K}")
               if h.get("verificate") != 13 or h.get("probleme"):
+                  print(f"NU MASOR: serverul are probleme {h.get('probleme')}")
+                  _fara_masuratoare(f"server bolnav: {h.get('probleme')}")
                   telegram(f"⚠️ Probe: serverul are probleme {h.get('probleme')} - "
                            "asistentul de paza se ocupa.")
-                  raise SystemExit(0)
+                  raise SystemExit(1)
           except SystemExit:
               raise
           except Exception as e:
+              print(f"NU MASOR: nu ajung la server ({str(e)[:120]})")
+              _fara_masuratoare(f"nu ajung la server: {str(e)[:80]}")
               telegram(f"⚠️ Probe: nu ajung la server ({str(e)[:80]}).")
-              raise SystemExit(0)
+              raise SystemExit(1)
 
           # apeluri reale (pentru randul din raport)
           try:
@@ -139,8 +161,10 @@ jobs:
               try:
                   cifre, nota_l, nota, trend, pierdute = ruleaza("transport", conditie, rabdare_start=1)
               except Exception as e:
+                  print(f"NU MASOR: proba nu a pornit ({str(e)[:120]})")
+                  _fara_masuratoare(f"proba nu a pornit: {str(e)[:80]}", conditie)
                   telegram(f"⚠️ Fulger: proba nu a pornit ({str(e)[:80]})")
-                  raise SystemExit(0)
+                  raise SystemExit(1)
               # alarma (rescrisa 23 aug - Lucian: "vreau doar cele importante").
               # Pe "galagie" robotul intra prin pod, deci FARA curatarea Krisp de
               # pe fir: replici pierdute si note de 30-45 sunt starea cunoscuta a
