@@ -61,6 +61,14 @@ def rand_din_jurnal(jurnal_randuri: list, scenariu: str, conditie: str,
     acoperite = _cauta(j, r"evaluari valide, (\d+)/(\d+) replici acoperite")
     acoperite_din = _cauta(j, r"evaluari valide, \d+/(\d+) replici acoperite")
 
+    # CLARITATEA VOCII (25 aug). Robotul o tipareste din 24 aug, dar nu ajungea
+    # in registru - deci nicio decizie nu o putea folosi, si exact reclamatia
+    # lui Lucian ("se aude rau de tot") ramanea invizibila pentru mecanism.
+    clar_ro = _cauta(j, r"ce aude clientul nostru \(romana\) (-?[\d.]+)")
+    clar_lui = _cauta(j, r"ce aude interlocutorul \(limba lui\) (-?[\d.]+)")
+    clar_ro = float(clar_ro) if clar_ro else None
+    clar_lui = float(clar_lui) if clar_lui else None
+
     incompleta = "MASURATOARE INCOMPLETA" in j
     intrerupt = "APEL INTRERUPT" in j or "evaluatorul a cazut" in j
 
@@ -76,6 +84,13 @@ def rand_din_jurnal(jurnal_randuri: list, scenariu: str, conditie: str,
     elif incompleta:
         valid = False
         motiv = "judecatorul nu a acoperit tot"
+    elif (clar_ro is not None and clar_ro < -0.65) or \
+         (clar_lui is not None and clar_lui < -0.65):
+        # POARTA DE CLARITATE: o nota mare obtinuta cu o voce pe care omul n-o
+        # intelege nu e o nota buna. Fara poarta asta, mecanismul ar putea
+        # "castiga" puncte stricand vocea - urechea lui Whisper citeste oricum.
+        valid = False
+        motiv = f"vocea suna MUSH (ro {clar_ro}, lui {clar_lui})"
     else:
         valid = True
         motiv = ""
@@ -93,6 +108,8 @@ def rand_din_jurnal(jurnal_randuri: list, scenariu: str, conditie: str,
             "cifre_din": int(cifre_din) if cifre_din else None,
             "ajunse_pct": int(ajunse_pct) if ajunse_pct else None,
             "viteza_pct": int(viteza) if viteza else None,
+            "claritate_ro": clar_ro,        # ce aude clientul nostru
+            "claritate_lui": clar_lui,      # ce aude interlocutorul
         },
         "masurat": {
             "ajunse": int(ajunse) if ajunse else None,
@@ -184,6 +201,19 @@ if __name__ == "__main__":
     vechi = [l for l in exemplu if not l.startswith("0) judecata")]
     r3 = rand_din_jurnal(vechi, "lung", "curat", {"cod": "x"}, "acum")
     assert r3["valid"] is False and "backend vechi" in r3["motiv"], r3
+
+    # claritatea intra in rand si MUSH face rularea de necomparat
+    cu_clar = list(exemplu)
+    cu_clar.insert(2, "0b) claritatea vocii (cat de usor s-a auzit, 0 = perfect, "
+                      "-1 = ceata): ce aude clientul nostru (romana) -0.28 LIMPEDE | "
+                      "ce aude interlocutorul (limba lui) -0.20 LIMPEDE")
+    r4 = rand_din_jurnal(cu_clar, "transport", "curat", {"cod": "x"}, "acum")
+    assert r4["sub"]["claritate_ro"] == -0.28 and r4["sub"]["claritate_lui"] == -0.20, r4
+    assert r4["valid"] is True, r4
+
+    mush = [l.replace("-0.28 LIMPEDE", "-0.81 MUSH") for l in cu_clar]
+    r5 = rand_din_jurnal(mush, "transport", "curat", {"cod": "x"}, "acum")
+    assert r5["valid"] is False and "MUSH" in r5["motiv"], r5
 
     assert imprastiere([73, 66, 70]) == {
         "cate": 3, "mediana": 70, "minim": 66, "maxim": 73,
