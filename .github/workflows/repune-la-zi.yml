@@ -96,9 +96,26 @@ jobs:
               with urllib.request.urlopen(r, timeout=45) as x:
                   return json.load(x)
 
-          d = api(f"/services/{SRV}/deploys", {"clearCache": "do_not_clear"}, "POST")
-          dep = d["id"]
-          print(f"deploy pornit: {dep}")
+          # ATENTIE (25 aug): pushul in aicall declanseaza SINGUR un deploy pe
+          # Render. Daca cerem si noi unul in aceeasi clipa, Render raspunde cu
+          # o eroare care nu e nici macar JSON, si pasul crapa - desi deployul
+          # chiar se face. Deci: incercam sa pornim unul, iar daca nu se poate,
+          # ne agatam de cel care ruleaza deja si asteptam verdictul LUI.
+          try:
+              d = api(f"/services/{SRV}/deploys", {"clearCache": "do_not_clear"}, "POST")
+              dep = d["id"]
+              print(f"deploy pornit de noi: {dep}")
+          except Exception as e:
+              print(f"nu am putut porni un deploy nou ({str(e)[:80]}) - "
+                    "ma uit daca ruleaza deja unul")
+              lista = api(f"/services/{SRV}/deploys?limit=3")
+              activ = [x.get("deploy", x) for x in lista
+                       if (x.get("deploy", x) or {}).get("status")
+                       in ("build_in_progress", "update_in_progress", "created", "queued")]
+              if not activ:
+                  print("nici nu am pornit unul, nici nu ruleaza altul"); raise SystemExit(1)
+              dep = activ[0]["id"]
+              print(f"ma agat de deployul care ruleaza deja: {dep}")
           for _ in range(60):
               time.sleep(20)
               st = api(f"/services/{SRV}/deploys/{dep}")["status"]
