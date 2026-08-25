@@ -40,6 +40,10 @@ jobs:
           TG_CHAT: ${{ secrets.TELEGRAM_CHAT_ID }}
           BACKEND: https://aicall-backend-1dwi.onrender.com
           MOD_MANUAL: ${{ inputs.mod }}
+          # Cronul de noapte (01:19 UTC) e bateria; restul sunt fulgere.
+          # github.event.schedule contine EXACT sirul cronului care a pornit
+          # jobul, deci nu mai depinde de cat de tarziu il porneste GitHub.
+          MOD_CRON: ${{ github.event.schedule == '19 1 * * *' && 'baterie' || 'fulger' }}
         run: |
           python3 - <<'PY'
           import json, os, re, time, urllib.request, urllib.parse, datetime
@@ -93,7 +97,15 @@ jobs:
               })
 
           acum = datetime.datetime.utcnow()
-          mod = os.environ.get("MOD_MANUAL") or ("baterie" if acum.hour == 1 else "fulger")
+          # MODUL NU SE MAI DEDUCE DIN CEAS (25 august). Bateria era programata
+          # la 01:19 UTC, dar GitHub intarzie cronurile cu zeci de minute; cand
+          # pornea la 02:31, `acum.hour` era 2 si bateria se transforma TACUT in
+          # fulger. De aceea registrul are numai rulari "transport" (fulgere) si
+          # ZERO rulari de baterie, de zile intregi, cu jobul verde in Actions.
+          # Acum modul vine din cron, scris in variabila MOD_CRON.
+          mod = (os.environ.get("MOD_MANUAL") or os.environ.get("MOD_CRON")
+                 or "fulger").strip()
+          print(f"mod: {mod}")
 
           # 1) serverul in picioare?
           try:
