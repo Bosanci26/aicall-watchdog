@@ -24,6 +24,10 @@ jobs:
   porneste-bateria:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    # Jetonul implicit NU poate porni alte lucrari fara asta - prima incercare
+    # a picat cu "403: Resource not accessible by integration".
+    permissions:
+      actions: write
     steps:
       - name: Porneste probele in modul BATERIE
         env:
