@@ -11,7 +11,8 @@ name: Probele automate SmartBiz (fulger la 3h + bateria zilnica)
 
 on:
   schedule:
-    - cron: '19 1 * * *'            # 04:19 RO - BATERIA completa
+    # Cronul BATERIEI s-a mutat in .github/workflows/bateria.yml (27 aug):
+    # aici se transforma tacut in fulger cand GitHub intarzia pornirea.
     - cron: '19 6,14,22 * * *'   # la 8 ore - FULGER (rarit 22 aug, cerut de Lucian)
   workflow_dispatch:
     inputs:
@@ -43,7 +44,10 @@ jobs:
           # Cronul de noapte (01:19 UTC) e bateria; restul sunt fulgere.
           # github.event.schedule contine EXACT sirul cronului care a pornit
           # jobul, deci nu mai depinde de cat de tarziu il porneste GitHub.
-          MOD_CRON: ${{ github.event.schedule == '19 1 * * *' && 'baterie' || 'fulger' }}
+          # Cronurile de aici sunt DOAR fulgere. Bateria vine prin
+          # workflow_dispatch cu mod=baterie, din bateria.yml - deci nu mai
+          # depinde de ce sir de cron raporteaza GitHub la o pornire intarziata.
+          MOD_CRON: fulger
         run: |
           python3 - <<'PY'
           import json, os, re, time, urllib.request, urllib.parse, datetime
