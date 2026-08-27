@@ -1,0 +1,34 @@
+name: Bateria zilnica
+
+# DE CE EXISTA FISIERUL ASTA SEPARAT (27 august).
+#
+# Bateria - proba care trece prin TOT produsul, nu doar printr-un colt - nu a
+# rulat niciodata. De doua ori am crezut ca am reparat-o si de doua ori a iesit
+# tot proba scurta:
+#   1) prima data pentru ca modul se ghicea din CEAS ("daca e ora 1, e baterie"),
+#      iar GitHub intarzie cronurile cu zeci de minute;
+#   2) a doua oara pentru ca l-am legat de sirul cronului raportat de GitHub -
+#      si pe rularea de azi-noapte, intarziata pana la 03:18, potrivirea nu s-a
+#      facut si a iesit iar "fulger".
+#
+# Deci nu mai ghicim deloc. Bateria are acum propriul fisier si propriul ceas,
+# si nu face decat un lucru: porneste proba SPUNAND explicit ca e baterie.
+# Nu mai exista drum pe care sa se transforme in altceva, oricat ar intarzia.
+
+on:
+  schedule:
+    - cron: '19 1 * * *'          # 04:19 ora Romaniei
+  workflow_dispatch:
+
+jobs:
+  porneste-bateria:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Porneste probele in modul BATERIE
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh workflow run "Probele automate SmartBiz (fulger la 3h + bateria zilnica)" \
+            --repo "${{ github.repository }}" -f mod=baterie
+          echo "bateria pornita explicit (mod=baterie)"
