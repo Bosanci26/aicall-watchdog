@@ -112,20 +112,39 @@ jobs:
           print(f"mod: {mod}")
 
           # 1) serverul in picioare?
-          try:
-              h = get(f"{B}/api/health/functii?key={K}")
-              if h.get("verificate") != 13 or h.get("probleme"):
-                  print(f"NU MASOR: serverul are probleme {h.get('probleme')}")
-                  _fara_masuratoare(f"server bolnav: {h.get('probleme')}")
-                  telegram(f"⚠️ Probe: serverul are probleme {h.get('probleme')} - "
-                           "asistentul de paza se ocupa.")
-                  raise SystemExit(1)
-          except SystemExit:
-              raise
-          except Exception as e:
-              print(f"NU MASOR: nu ajung la server ({str(e)[:120]})")
-              _fara_masuratoare(f"nu ajung la server: {str(e)[:80]}")
-              telegram(f"⚠️ Probe: nu ajung la server ({str(e)[:80]}).")
+          #
+          # RABDARE INAINTE DE ALARMA (28 august). Serverul reporneste de fiecare
+          # data cand se pune cod nou, si repornirea tine un minut-doua. Daca proba
+          # cade exact atunci, pana azi trimitea "nu ajung la server" si un email
+          # rosu - pentru ceva absolut normal. Din 12 alarme de azi, 2 erau exact
+          # asta. Deci incercam de 4 ori in ~3 minute; abia daca NICIUNA nu prinde
+          # serverul, e cu adevarat cazut si atunci alarma e meritata.
+          # ATENTIE: asta NU e o revenire la "sarim peste masuratoare in tacere" -
+          # daca serverul chiar e jos, jobul tot moare rosu, ca inainte.
+          h, ultima_eroare = None, None
+          for incercare in range(4):
+              try:
+                  h = get(f"{B}/api/health/functii?key={K}")
+                  break
+              except Exception as e:
+                  ultima_eroare = e
+                  h = None
+                  print(f"incercarea {incercare+1}/4 nu a prins serverul ({str(e)[:80]})")
+                  if incercare < 3:
+                      time.sleep(60)
+
+          if h is None:
+              print(f"NU MASOR: nu ajung la server ({str(ultima_eroare)[:120]})")
+              _fara_masuratoare(f"nu ajung la server: {str(ultima_eroare)[:80]}")
+              telegram(f"⚠️ Probe: nu ajung la server nici dupa 4 incercari in 3 "
+                       f"minute ({str(ultima_eroare)[:70]}).")
+              raise SystemExit(1)
+
+          if h.get("verificate") != 13 or h.get("probleme"):
+              print(f"NU MASOR: serverul are probleme {h.get('probleme')}")
+              _fara_masuratoare(f"server bolnav: {h.get('probleme')}")
+              telegram(f"⚠️ Probe: serverul are probleme {h.get('probleme')} - "
+                       "asistentul de paza se ocupa.")
               raise SystemExit(1)
 
           # apeluri reale (pentru randul din raport)
