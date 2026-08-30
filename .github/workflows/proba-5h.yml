@@ -10,10 +10,16 @@ name: Probele automate SmartBiz (fulger la 3h + bateria zilnica)
 # Costul estimat: ~1,5-2 $/zi in faza de reparatii; se rareste dupa lansare.
 
 on:
-  schedule:
-    # Cronul BATERIEI s-a mutat in .github/workflows/bateria.yml (27 aug):
-    # aici se transforma tacut in fulger cand GitHub intarzia pornirea.
-    - cron: '19 6,14,22 * * *'   # la 8 ore - FULGER (rarit 22 aug, cerut de Lucian)
+  # CEASUL OPRIT (30 aug, cerut de Lucian: "nu vreau asa mult sa verifice ca
+  # nu am asa de multi bani acum").
+  #
+  # Probele scurte porneau de 3 ori pe zi si costau ca un apel adevarat:
+  # aceeasi ureche, aceeasi traducere, aceeasi voce. In ziua de 30 august,
+  # 80% din TOATE apelurile din baza erau probe si ZERO minute erau de client.
+  # Robotul se proba pe el insusi, pe banii lui.
+  #
+  # Ramane butonul manual (Actions -> Run workflow) si bateria mai ampla din
+  # bateria.yml, care merge acum din 3 in 3 zile.
   workflow_dispatch:
     inputs:
       mod:
