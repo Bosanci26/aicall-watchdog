@@ -220,6 +220,27 @@ jobs:
               # daca e bine: tacere - bateria zilnica aduce tabelul
 
           else:
+              def _istoric_mediu(scenariu, conditie, minim=3):
+                  """Media notelor de pana acum, pentru EXACT examenul asta."""
+                  try:
+                      note = []
+                      with open("registru.jsonl", encoding="utf-8") as f:
+                          for rand in f:
+                              rand = rand.strip()
+                              if not rand:
+                                  continue
+                              d = json.loads(rand)
+                              if (d.get("scenariu") == scenariu
+                                      and d.get("conditie") == conditie
+                                      and d.get("valid") and d.get("nota")):
+                                  note.append(int(d["nota"]))
+                      if len(note) < minim:
+                          return None
+                      note = note[-10:]
+                      return round(sum(note) / len(note))
+                  except Exception:
+                      return None
+
               BATERIA = [("lung", "curat"), ("clauze", "curat"), ("lung", "galagie"),
                          ("clauze", "telefon"), ("lung", "toate")]
               linii = ["🔋 Bateria zilnica SmartBiz — toate probele:"]
@@ -233,10 +254,24 @@ jobs:
                       if trend:
                           mt = re.search(r"data trecuta (\d+)", trend)
                           if mt: tr = f" | data trecuta {mt.group(1)}"
-                      linii.append(f"• {scenariu}+{conditie}: {pe_scurt}/100{extra}{tr}")
+                      # FIECARE EXAMEN SE COMPARA CU EL INSUSI, nu cu un prag comun.
+                      # Pragul de 85 fusese pus dupa scenariul scurt si aplicat
+                      # peste toate - dar `lung+curat` n-a trecut de 85 NICIODATA
+                      # (cel mai bun: 87, o singura data), iar `clauze+curat`
+                      # niciodata peste 78. Adica alarma era rosie in fiecare zi
+                      # din constructie, si nu spunea nimic.
+                      obisnuit = _istoric_mediu(scenariu, conditie)
+                      semn = ""
+                      if obisnuit and pe_scurt != "?":
+                          d = int(pe_scurt) - obisnuit
+                          if d <= -8:   semn = f" ⚠️ sub obisnuit ({obisnuit})"
+                          elif d >= 8:  semn = f" ✅ peste obisnuit ({obisnuit})"
+                          else:         semn = f" (obisnuit {obisnuit})"
+                      linii.append(f"• {scenariu}+{conditie}: {pe_scurt}/100{extra}{tr}{semn}")
                   except Exception as e:
                       linii.append(f"• {scenariu}+{conditie}: EROARE {str(e)[:50]}")
-              linii.append("Praguri: 85 curat / 80 telefon / 70 toate")
+              linii.append("Fiecare examen e comparat cu media LUI din trecut, "
+                           "nu cu un prag comun.")
               if reale:
                   tot = sorted(r["total_gura_ureche_ms"] for r in reale
                                if r.get("total_gura_ureche_ms"))
