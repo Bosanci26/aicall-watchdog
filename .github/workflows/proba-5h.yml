@@ -146,12 +146,27 @@ jobs:
                        f"minute ({str(ultima_eroare)[:70]}).")
               raise SystemExit(1)
 
-          if h.get("verificate") != 13 or h.get("probleme"):
-              print(f"NU MASOR: serverul are probleme {h.get('probleme')}")
-              _fara_masuratoare(f"server bolnav: {h.get('probleme')}")
-              telegram(f"⚠️ Probe: serverul are probleme {h.get('probleme')} - "
+          # NUMAI ROSUL OPRESTE MASURATOAREA, nu si avertismentele.
+          #
+          # Gasit pe 26 septembrie de directorul tehnic, si era o buba de-a
+          # mea. Orice "problema" oprea bateria - inclusiv un simplu
+          # avertisment de bani. Pe 25 septembrie soldul la operator a scazut
+          # la 7,90 $, pragul de avertizare e 8 $, si ZECE CENTI au oprit
+          # toata masurarea calitatii. Ultima masuratoare buna: 22 septembrie.
+          # Patru zile in care credeam ca produsul e masurat automat si nu era.
+          #
+          # Un sold in scadere nu strica nicio traducere. Se scrie in raport si
+          # se merge mai departe.
+          avertismente = [p for p in (h.get("probleme") or []) if "🟠" in str(p)]
+          grave = [p for p in (h.get("probleme") or []) if "🟠" not in str(p)]
+          if h.get("verificate") != 13 or grave:
+              print(f"NU MASOR: serverul are probleme {grave}")
+              _fara_masuratoare(f"server bolnav: {grave}")
+              telegram(f"⚠️ Probe: serverul are probleme {grave} - "
                        "asistentul de paza se ocupa.")
               raise SystemExit(1)
+          if avertismente:
+              print(f"(merg mai departe, doar avertismente: {avertismente})")
 
           # apeluri reale (pentru randul din raport)
           try:
