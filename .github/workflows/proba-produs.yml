@@ -99,6 +99,42 @@ jobs:
           except Exception as e:
               rau.append(f"nu am putut verifica Stripe: {str(e)[:100]}")
 
+          # 2b. BOTUL DE VERIFICARI, felul "multe cereri deodata".
+          #
+          # Cerut de Lucian pe 26 septembrie: "ai verificat daca la multe
+          # cereri deodata functioneaza bine si nu se blocheaza?". Nu
+          # verificasem - si nu din lene, ci fiindca nu ma gandisem la felul
+          # ala de verificare. De-aia felurile se scriu intr-o lista, nu se
+          # tin minte.
+          #
+          # Serverul e pe planul mic al Render, un singur proces. Daca la
+          # zece dispeceri deodata raspunsul trece de cinci secunde, produsul
+          # pare stricat pentru toti - si nimeni n-ar sti de ce.
+          try:
+              import concurrent.futures as cf
+              def una(_):
+                  t0 = __import__("time").time()
+                  try:
+                      req = urllib.request.Request(f"{B}/api/text/stare")
+                      req.add_header("X-Dispozitiv", "proba-incarcare-zilnica")
+                      with urllib.request.urlopen(req, timeout=60) as r:
+                          r.read()
+                      return True, __import__("time").time() - t0
+                  except Exception:
+                      return False, __import__("time").time() - t0
+              with cf.ThreadPoolExecutor(max_workers=20) as ex:
+                  rez = list(ex.map(una, range(20)))
+              bune = sum(1 for ok, _ in rez if ok)
+              lent = max(t for _, t in rez)
+              if bune < 20 or lent > 5:
+                  rau.append(f"LA 20 DE CERERI DEODATA: doar {bune}/20 au raspuns, "
+                             f"cea mai lenta {lent:.1f}s")
+              else:
+                  bine.append(f"20 de cereri deodata: toate au raspuns, "
+                              f"cea mai lenta {lent:.1f}s")
+          except Exception as e:
+              bine.append(f"(n-am putut proba incarcarea: {str(e)[:60]})")
+
           # 3. Furnizorii - DE STIUT, nu alarma.
           #
           # Prima rulare, 26 septembrie, a dat rosu pentru doua lucruri
