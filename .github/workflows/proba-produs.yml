@@ -1,0 +1,128 @@
+# ASISTENTUL CARE PAZESTE PRODUSUL DE AZI, nu pe cel de anul trecut.
+#
+# De ce exista, scris pe 26 septembrie 2026. Lucian: "imi trebuie ceva ce sa
+# verifice singur ce mai am de facut... Claude omite o mare parte din ele".
+# Avea dreptate, si tot el a pus degetul pe unde era gaura: "nu ai nimic in
+# github sau probabil ai dar nu face ce vreau eu".
+#
+# Amandoua adevarate. Asistentul de langa (proba-5h.yml) probeaza APELUL -
+# produsul de anul trecut. Tastatura si traducerea, adica ce se vinde ACUM, nu
+# le proba nimeni cand Lucian nu statea in fata calculatorului.
+#
+# Ce face asta, o data pe zi, singur, pe calculatoarele GitHub:
+#   1. TRADUCEREA CHIAR E BUNA? Sapte mesaje de dispecer, dus si intors.
+#      Cifrele, orele, numerele de camion si codurile trec neatinse? Mesajul
+#      primit isi pastreaza felul - o porunca ramane porunca? Amandoua au
+#      prins bube adevarate in ziua in care s-au scris.
+#   2. CE PRESUPUNE CODUL DESPRE STRIPE se potriveste cu ce e acolo?
+#   3. Ce mai are Lucian de facut - randurile din DE-FACUT.md care asteapta
+#      o hotarare de-a LUI, nu munca de-a mea.
+#
+# TACE CAND E BINE. Un raport zilnic pe care il citesti de trei ori si pe urma
+# il ignori e mai rau decat niciun raport. Scrie numai cand s-a stricat ceva,
+# plus o data pe saptamana (luni) un rezumat scurt ca sa se stie ca traieste.
+
+name: Proba produsului SmartBiz (traducerea + potrivirea cu lumea)
+
+on:
+  schedule:
+    # 07:41 ora Romaniei. Dimineata, ca sa prinda ce s-a stricat peste noapte,
+    # si la un minut nerotund ca sa nu cada peste toata lumea deodata.
+    - cron: '41 4 * * *'
+  workflow_dispatch:
+    inputs:
+      oricum:
+        description: 'Scrie pe Telegram chiar daca e totul bine'
+        type: boolean
+        default: true
+
+concurrency:
+  group: proba-produs
+  cancel-in-progress: false
+
+jobs:
+  produs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Intreaba serverul si raporteaza
+        env:
+          HEALTH_KEY: ${{ secrets.HEALTH_KEY }}
+          TG_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TG_CHAT: ${{ secrets.TELEGRAM_CHAT_ID }}
+          BACKEND: https://aicall-backend-1dwi.onrender.com
+          ORICUM: ${{ inputs.oricum }}
+        run: |
+          python3 - <<'PY'
+          import datetime, json, os, urllib.parse, urllib.request
+
+          B = os.environ["BACKEND"]; K = os.environ["HEALTH_KEY"]
+          ORICUM = (os.environ.get("ORICUM") or "").lower() == "true"
+
+          def telegram(text):
+              data = urllib.parse.urlencode({
+                  "chat_id": os.environ["TG_CHAT"], "text": text}).encode()
+              urllib.request.urlopen(urllib.request.Request(
+                  f"https://api.telegram.org/bot{os.environ['TG_TOKEN']}/sendMessage",
+                  data=data), timeout=30)
+
+          def get(cale, rabdare=180):
+              # Traducerile dureaza; serverul se poate si trezi din somn.
+              with urllib.request.urlopen(f"{B}{cale}?key={K}", timeout=rabdare) as r:
+                  return json.load(r)
+
+          rau = []
+          bine = []
+
+          # 1. TRADUCEREA. Inima produsului.
+          try:
+              p = get("/api/health/produs")
+              if p.get("ok"):
+                  bine.append(f"traducerea: {p.get('mesaje_probate')} mesaje, "
+                              f"{p.get('cifre_verificate')} cifre - toate curate")
+              else:
+                  rau.append("TRADUCEREA S-A STRICAT:")
+                  for n in (p.get("necazuri") or [])[:6]:
+                      rau.append("  " + str(n)[:160])
+          except Exception as e:
+              rau.append(f"nu am putut proba traducerea: {str(e)[:100]}")
+
+          # 2. CE PRESUPUNE CODUL vs. CE E IN STRIPE.
+          try:
+              s = get("/api/health/stripe", 90)
+              if s.get("ok"):
+                  bine.append("Stripe: preturile si carligele se potrivesc cu codul")
+              else:
+                  rau.append("STRIPE NU SE POTRIVESTE CU CODUL:")
+                  for n in (s.get("necazuri") or [])[:4]:
+                      rau.append("  " + str(n)[:160])
+          except Exception as e:
+              rau.append(f"nu am putut verifica Stripe: {str(e)[:100]}")
+
+          # 3. Furnizorii - se opreste ceva din lipsa de bani?
+          try:
+              f = get("/api/health/providers", 90)
+              for nume, st in (f or {}).items():
+                  if isinstance(st, dict) and st.get("ok") is False:
+                      rau.append(f"{nume}: {str(st.get('error'))[:60]}")
+                  if nume == "elevenlabs" and isinstance(st, dict):
+                      ram = st.get("chars_left")
+                      lim = st.get("chars_limit") or 1
+                      if isinstance(ram, int) and ram < lim * 0.25:
+                          rau.append(f"ElevenLabs: au mai ramas {ram} semne din {lim}")
+          except Exception as e:
+              bine.append(f"(nu am putut citi furnizorii: {str(e)[:60]})")
+
+          luni = datetime.datetime.utcnow().weekday() == 0
+
+          if rau:
+              telegram("🔴 PRODUSUL SmartBiz - ceva s-a stricat:\n\n" + "\n".join(rau)
+                       + "\n\nProbele: /api/health/produs si /api/health/stripe")
+          elif ORICUM or luni:
+              telegram("🟢 Produsul SmartBiz, verificat:\n\n" + "\n".join("  " + b for b in bine)
+                       + "\n\n(scriu doar cand se strica ceva, plus lunea)")
+          else:
+              print("totul e bine - nu deranjez")
+
+          for r in rau:
+              print(r)
+          PY
