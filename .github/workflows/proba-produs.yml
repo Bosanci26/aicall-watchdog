@@ -70,8 +70,9 @@ jobs:
               with urllib.request.urlopen(f"{B}{cale}?key={K}", timeout=rabdare) as r:
                   return json.load(r)
 
-          rau = []
-          bine = []
+          rau = []       # PRODUSUL s-a stricat -> alarma rosie
+          bine = []      # ce a iesit curat
+          destiut = []   # adevarat, dar stiut si scris in DE-FACUT -> fara alarma
 
           # 1. TRADUCEREA. Inima produsului.
           try:
@@ -98,31 +99,46 @@ jobs:
           except Exception as e:
               rau.append(f"nu am putut verifica Stripe: {str(e)[:100]}")
 
-          # 3. Furnizorii - se opreste ceva din lipsa de bani?
+          # 3. Furnizorii - DE STIUT, nu alarma.
+          #
+          # Prima rulare, 26 septembrie, a dat rosu pentru doua lucruri
+          # adevarate dar stiute: cheile Twilio respinse si ElevenLabs aproape
+          # gol. Amandoua sunt scrise in DE-FACUT si asteapta o hotarare de-a
+          # lui Lucian, nu o reparatie de-a mea. Daca ar fi strigat rosu in
+          # fiecare dimineata, in trei zile nu s-ar mai fi uitat nimeni la
+          # asistent - si atunci ziua in care se strica traducerea ar fi
+          # trecut neobservata.
+          #
+          # Alarma rosie e numai pentru PRODUS. Furnizorii ii pazeste oricum
+          # celalalt asistent, din cinci in cinci minute.
           try:
               f = get("/api/health/providers", 90)
               for nume, st in (f or {}).items():
                   if isinstance(st, dict) and st.get("ok") is False:
-                      rau.append(f"{nume}: {str(st.get('error'))[:60]}")
+                      destiut.append(f"{nume}: {str(st.get('error'))[:60]}")
                   if nume == "elevenlabs" and isinstance(st, dict):
                       ram = st.get("chars_left")
                       lim = st.get("chars_limit") or 1
                       if isinstance(ram, int) and ram < lim * 0.25:
-                          rau.append(f"ElevenLabs: au mai ramas {ram} semne din {lim}")
+                          destiut.append(f"ElevenLabs: {ram} semne din {lim} - se apropie de capat")
           except Exception as e:
-              bine.append(f"(nu am putut citi furnizorii: {str(e)[:60]})")
+              destiut.append(f"(nu am putut citi furnizorii: {str(e)[:60]})")
 
-          luni = datetime.datetime.utcnow().weekday() == 0
+          luni = datetime.datetime.now(datetime.timezone.utc).weekday() == 0
+          coada = ("\n\nDE STIUT (nu e stricat azi):\n"
+                   + "\n".join("  " + d for d in destiut)) if destiut else ""
 
           if rau:
               telegram("🔴 PRODUSUL SmartBiz - ceva s-a stricat:\n\n" + "\n".join(rau)
-                       + "\n\nProbele: /api/health/produs si /api/health/stripe")
+                       + "\n\nProbele: /api/health/produs si /api/health/stripe" + coada)
           elif ORICUM or luni:
-              telegram("🟢 Produsul SmartBiz, verificat:\n\n" + "\n".join("  " + b for b in bine)
+              telegram("🟢 Produsul SmartBiz, verificat:\n\n"
+                       + "\n".join("  " + b for b in bine)
+                       + coada
                        + "\n\n(scriu doar cand se strica ceva, plus lunea)")
           else:
-              print("totul e bine - nu deranjez")
+              print("produsul e bine - nu deranjez")
 
-          for r in rau:
+          for r in rau + destiut:
               print(r)
           PY
