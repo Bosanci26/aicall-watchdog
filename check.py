@@ -38,6 +38,7 @@ RUNDE_PANA_LA_REZOLVAT = int(os.environ.get("RUNDE_PANA_LA_REZOLVAT", "2"))
 # Praguri "bani putini" - anunta INAINTE sa ramai fara
 TWILIO_LOW_USD = float(os.environ.get("TWILIO_LOW_USD", "5"))       # ~100 min RO
 ELEVENLABS_LOW_PCT = float(os.environ.get("ELEVENLABS_LOW_PCT", "10"))  # sub 10% ramas
+FISH_LOW_USD = float(os.environ.get("FISH_LOW_USD", "5"))
 
 # Serviciile fara de care SmartBiz nu poate traduce un apel
 CRIT_DEPS = ["supabase", "openai", "elevenlabs", "twilio"]
@@ -86,6 +87,11 @@ def check_backend():
                     return "DEGRADED", "backend raspunde dar nu cu JSON valid"
                 marker = j.get("code_marker", "?")
                 bad = [d for d in CRIT_DEPS if not j.get(d, False)]
+                # Fara email nu intra nimeni in cont (linkul de intrare) si nu
+                # pleaca chitantele. Doar cand serverul spune EXPLICIT false:
+                # un server vechi fara camp nu e o problema.
+                if j.get("email") is False:
+                    bad.append("email (nu pleaca linkurile de intrare si chitantele)")
                 if bad:
                     return "DEGRADED", f"backend pornit ({marker}) dar servicii cazute: {', '.join(bad)}"
                 return "OK", f"backend OK ({marker})"
@@ -140,6 +146,18 @@ def check_providers():
             problems.append(f"💳 <b>ElevenLabs: cote pe terminate</b> — au ramas {left} caractere ({pct:.0f}%). Reincarca abonamentul.")
     elif not el.get("ok"):
         problems.append(f"🔴 ElevenLabs (vocea) nu raspunde — {el.get('error','?')}")
+
+    # Fish Audio (vocea ieftina). Pe 27 sep serverul NU il raporteaza inca in
+    # /api/health/providers; de-aia tacem cat timp lipseste campul "fish", iar
+    # cand apare citim creditul din oricare nume ii da serverul.
+    fs = p.get("fish")
+    if isinstance(fs, dict):
+        credit = next((fs[k] for k in ("balance_usd", "credit_usd", "credit", "balance")
+                       if isinstance(fs.get(k), (int, float))), None)
+        if fs.get("ok") and credit is not None and credit < FISH_LOW_USD:
+            problems.append(f"💳 <b>Fish: credit putin</b> — au ramas ${credit:.2f} (sub ${FISH_LOW_USD:.0f}). Pune bani la fish.audio.")
+        elif fs.get("ok") is False:
+            problems.append(f"🟠 Fish (vocea) nu raspunde — {fs.get('error','?')}")
 
     # Groq transcrie podcasturile pentru seful de cabinet. Nu tine apelurile in
     # viata, deci nu e urgenta ca Twilio - dar daca tace, biblioteca de strategii

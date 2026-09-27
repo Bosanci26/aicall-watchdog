@@ -44,6 +44,9 @@ jobs:
   produs:
     runs-on: ubuntu-latest
     steps:
+      # Aduce proba_paginilor.py (depozitul asta e PUBLIC: in el nu sta nicio
+      # cheie - proba paginilor face doar GET-uri pe adrese publice).
+      - uses: actions/checkout@v4
       - name: Intreaba serverul si raporteaza
         env:
           HEALTH_KEY: ${{ secrets.HEALTH_KEY }}
@@ -160,13 +163,32 @@ jobs:
           except Exception as e:
               destiut.append(f"(nu am putut citi furnizorii: {str(e)[:60]})")
 
+          # 4. PAGINILE SI RUTELE PUBLICE (proba_paginilor.py, 27 septembrie).
+          # Pe site o adresa pierduta nu da 404 - Vercel arata aplicatia cu
+          # 200. Proba recunoaste fiecare pagina dupa textul ei, cauta orice
+          # vorba de apel/Twilio, versiunea extensiei, APK-ul, pretul de 29 EUR
+          # si campul "email" al serverului.
+          try:
+              import sys; sys.path.insert(0, os.getcwd())
+              from proba_paginilor import ruleaza
+              pg = ruleaza()
+              if pg["rau"]:
+                  rau.append("PAGINILE SITE-ULUI:")
+                  rau.extend("  " + x[:160] for x in pg["rau"][:8])
+              else:
+                  bine.append(f"paginile si rutele publice: {len(pg['bine'])} verificari curate")
+              destiut.extend(x[:120] for x in pg["destiut"])
+          except Exception as e:
+              rau.append(f"nu am putut proba paginile: {str(e)[:100]}")
+
           luni = datetime.datetime.now(datetime.timezone.utc).weekday() == 0
           coada = ("\n\nDE STIUT (nu e stricat azi):\n"
                    + "\n".join("  " + d for d in destiut)) if destiut else ""
 
           if rau:
               telegram("🔴 PRODUSUL SmartBiz - ceva s-a stricat:\n\n" + "\n".join(rau)
-                       + "\n\nProbele: /api/health/produs si /api/health/stripe" + coada)
+                       + "\n\nProbele: /api/health/produs, /api/health/stripe"
+                       + " si proba_paginilor.py" + coada)
           elif ORICUM or luni:
               telegram("🟢 Produsul SmartBiz, verificat:\n\n"
                        + "\n".join("  " + b for b in bine)
