@@ -142,7 +142,12 @@ def check_providers():
     if el.get("ok") and el.get("chars_limit"):
         left, limit = el.get("chars_left", 0), el["chars_limit"]
         pct = (left / limit * 100) if limit else 100
-        if pct < ELEVENLABS_LOW_PCT:
+        if left <= 0:
+            # 16 oct: la 10% anunta o data, iar la ZERO tacea ("deja anuntat") -
+            # robotul a vorbit o dupa-amiaza intreaga cu vocea de rezerva. Golul
+            # e alta problema, cu alt text, deci se anunta din nou.
+            problems.append("🔴 <b>ElevenLabs GOL</b> — 0 caractere. Robotul vorbeste ACUM cu vocea de rezerva (Fish), care suna altfel. Reincarca ElevenLabs sau opreste robotul.")
+        elif pct < ELEVENLABS_LOW_PCT:
             problems.append(f"💳 <b>ElevenLabs: cote pe terminate</b> — au ramas {left} caractere ({pct:.0f}%). Reincarca abonamentul.")
     elif not el.get("ok"):
         problems.append(f"🔴 ElevenLabs (vocea) nu raspunde — {el.get('error','?')}")
