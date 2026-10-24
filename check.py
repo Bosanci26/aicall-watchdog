@@ -2,7 +2,7 @@
 """
 Asistent de paza SmartBiz: verifica backend + frontend + SOLDUL la furnizori +
 CODUL (agentul de vanzari si traducerea au toate functiile? rutele exista?
-Twilio raporteaza erori de telefonie?), anunta pe Telegram cand ceva pica sau
+are Telnyx bani?), anunta pe Telegram cand ceva pica sau
 isi revine, si (optional) cere automat un redeploy pe Render.
 
 Fara dependinte (doar stdlib). Ruleaza pe GitHub Actions din 5 in 5 minute.
@@ -36,12 +36,15 @@ PRODUS_RAU_LA_MIN = float(os.environ.get("PRODUS_RAU_LA_MIN", "15"))
 RUNDE_PANA_LA_REZOLVAT = int(os.environ.get("RUNDE_PANA_LA_REZOLVAT", "2"))
 
 # Praguri "bani putini" - anunta INAINTE sa ramai fara
-TWILIO_LOW_USD = float(os.environ.get("TWILIO_LOW_USD", "5"))       # ~100 min RO
+# Telnyx e singurul operator (Twilio sters din tot SmartBiz pe 27 sep 2026).
+TELNYX_LOW_USD = float(os.environ.get("TELNYX_LOW_USD", "5"))
 ELEVENLABS_LOW_PCT = float(os.environ.get("ELEVENLABS_LOW_PCT", "10"))  # sub 10% ramas
 FISH_LOW_USD = float(os.environ.get("FISH_LOW_USD", "5"))
 
 # Serviciile fara de care SmartBiz nu poate traduce un apel
-CRIT_DEPS = ["supabase", "openai", "elevenlabs", "twilio"]
+# "telnyx" se verifica doar daca serverul il raporteaza (vezi check_backend):
+# asa nu da alarma falsa in minutele dintre deploy-ul serverului si al meu.
+CRIT_DEPS = ["supabase", "openai", "elevenlabs", "telnyx"]
 
 
 def http_get(url, timeout=30):
@@ -86,7 +89,8 @@ def check_backend():
                 except Exception:
                     return "DEGRADED", "backend raspunde dar nu cu JSON valid"
                 marker = j.get("code_marker", "?")
-                bad = [d for d in CRIT_DEPS if not j.get(d, False)]
+                bad = [d for d in CRIT_DEPS
+                       if (d in j or d != "telnyx") and not j.get(d, False)]
                 # Fara email nu intra nimeni in cont (linkul de intrare) si nu
                 # pleaca chitantele. Doar cand serverul spune EXPLICIT false:
                 # un server vechi fara camp nu e o problema.
@@ -126,13 +130,14 @@ def check_providers():
         return []
 
     problems = []
-    tw = p.get("twilio", {})
-    if tw.get("ok") and tw.get("balance_usd") is not None:
-        bal = tw["balance_usd"]
-        if bal < TWILIO_LOW_USD:
-            problems.append(f"💳 <b>Twilio: bani putini</b> — au ramas ${bal:.2f} (sub ${TWILIO_LOW_USD:.0f}). Reincarca.")
-    elif not tw.get("ok"):
-        problems.append(f"🔴 Twilio nu raspunde — {tw.get('error','?')}")
+    tx = p.get("telnyx")
+    if tx is not None:                      # serverul vechi inca nu-l raporteaza
+        if tx.get("ok") and tx.get("balance_usd") is not None:
+            bal = tx["balance_usd"]
+            if bal < TELNYX_LOW_USD:
+                problems.append(f"💳 <b>Telnyx: bani putini</b> — au ramas ${bal:.2f} (sub ${TELNYX_LOW_USD:.0f}). Reincarca.")
+        elif not tx.get("ok"):
+            problems.append(f"🔴 Telnyx nu raspunde — {tx.get('error','?')}")
 
     oa = p.get("openai", {})
     if not oa.get("ok"):
@@ -165,7 +170,7 @@ def check_providers():
             problems.append(f"🟠 Fish (vocea) nu raspunde — {fs.get('error','?')}")
 
     # Groq transcrie podcasturile pentru seful de cabinet. Nu tine apelurile in
-    # viata, deci nu e urgenta ca Twilio - dar daca tace, biblioteca de strategii
+    # viata, deci nu e urgenta ca Telnyx - dar daca tace, biblioteca de strategii
     # se opreste fara sa se vada nicaieri. Cat timp cheia nu e pusa, tacem.
     gq = p.get("groq", {})
     if gq.get("configured") and not gq.get("ok"):
@@ -185,7 +190,6 @@ def check_code():
     trebuie ca sa poata suna? Pe 26 iulie, modulul agentului a pierdut jumatate
     din functii si fisierul a ramas cod valid - serverul raspundea vesel, dar
     orice apel ar fi crapat. Asta prinde exact asa ceva.
-    Verifica si erorile de telefonie raportate de Twilio.
     """
     if not (BACKEND and HEALTH_KEY):
         return []
@@ -206,8 +210,6 @@ def check_code():
         # lipsa de functii sau module care nu se incarca = rosu, restul portocaliu
         rosu = ("pierdut functia" in p or "NU se incarca" in p or "nu mai exista" in p)
         out.append(("🔴 " if rosu else "🟠 ") + p)
-    for e in (d.get("erori_twilio") or [])[:3]:
-        out.append(f"🔴 telefonie: eroare Twilio {e.get('cod')} — {e.get('text','')[:110]}")
     return out
 
 
@@ -417,7 +419,7 @@ def main():
         stare.get("probleme") or {}, problems, b_status == "DOWN")
 
     # Redeploy doar cand serverul abia a cazut. Inainte se cerea doar la
-    # trecerea OK->DOWN - si cu Twilio rosu de saptamani, un server cazut
+    # trecerea OK->DOWN - si cu un furnizor rosu de saptamani, un server cazut
     # n-ar mai fi primit niciodata redeploy.
     backend_abia_cazut = b_status == "DOWN" and any(p == "🔴 " + b_msg for p in noi)
     extra = try_auto_repair() if backend_abia_cazut else ""

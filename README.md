@@ -4,7 +4,7 @@ Asistentul care vegheaza SmartBiz. Ruleaza pe GitHub Actions din 5 in 5 minute,
 verifica backend-ul (Render), site-ul (Vercel) si **soldul la furnizori**, si:
 
 - te **anunta pe Telegram** cand ceva pica sau isi revine (doar la schimbarea starii, fara spam);
-- te anunta cand **raman bani putini** la Twilio / OpenAI / ElevenLabs — inainte sa pice apelurile;
+- te anunta cand **raman bani putini** la Telnyx / OpenAI / ElevenLabs — inainte sa pice apelurile;
 - **incearca automat un redeploy** pe Render cand backend-ul nu raspunde (daca e configurat un Deploy Hook).
 
 Nu contine cod din aplicatie. Cheile furnizorilor stau pe server (backend), nu aici;
@@ -19,11 +19,11 @@ asistentul citeste doar un rezumat de stare protejat de o cheie.
 | `HEALTH_KEY` | pt sold furnizori | cheia pt `/api/health/providers` (derivata din secretul Supabase) |
 | `RENDER_DEPLOY_HOOK` | optional (auto-reparare) | URL-ul Deploy Hook din Render |
 
-Praguri optionale (variabile de mediu in workflow): `TWILIO_LOW_USD` (implicit 5), `ELEVENLABS_LOW_PCT` (implicit 10).
+Praguri optionale (variabile de mediu in workflow): `TELNYX_LOW_USD` (implicit 5), `ELEVENLABS_LOW_PCT` (implicit 10).
 
 ## Ce repara singur si ce nu
 
 - **Repara:** server blocat/crashat/adormit -> redeploy automat.
-- **Anunta (nu repara):** bani putini la furnizori (reincarci tu), erori de cod (le rezolva un om), pene externe (OpenAI/Twilio pica global).
+- **Anunta (nu repara):** bani putini la furnizori (reincarci tu), erori de cod (le rezolva un om), pene externe (OpenAI/Telnyx pica global).
 
 Test alarma (fara sa atinga productia): tab **Actions** > SmartBiz Watchdog > **Run workflow** > `simulate: down`.
