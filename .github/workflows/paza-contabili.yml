@@ -1,0 +1,38 @@
+name: Paza contabililor
+
+# 27 oct 2026, Lucian: vrea pe Telegram ce au raspuns contabilii sunati de robot,
+# fara sa tina laptopul deschis. Din 5 in 5 minute, in orele de apel (L-V).
+on:
+  schedule:
+    - cron: '*/5 7-16 * * 1-5'
+  workflow_dispatch:
+
+concurrency:
+  group: paza-contabili
+  cancel-in-progress: false
+
+jobs:
+  paza:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restaureaza ce s-a anuntat deja
+        uses: actions/cache/restore@v4
+        with:
+          path: contabili-state.json
+          key: contabili-${{ github.run_id }}
+          restore-keys: |
+            contabili-
+      - name: Verifica si anunta
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          HEALTH_KEY: ${{ secrets.HEALTH_KEY }}
+        run: python paza_contabili.py
+      - name: Salveaza ce s-a anuntat
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: contabili-state.json
+          key: contabili-${{ github.run_id }}
